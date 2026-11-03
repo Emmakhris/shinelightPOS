@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-100 text-slate-800 antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200 disabled:bg-slate-100;
+  }
+  .label {
+    @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+  .table {
+    @apply w-full text-left text-sm;
+  }
+  .table th {
+    @apply border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+  .table td {
+    @apply border-b border-slate-100 px-3 py-2;
+  }
+  .table tbody tr:hover {
+    @apply bg-slate-50;
+  }
+}
+
+/* Thermal receipt printing: only #print-root is printed. */
+#print-root {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 0;
+    size: var(--paper-width, 80mm) auto;
+  }
+  body {
+    background: white;
+  }
+  #root {
+    display: none !important;
+  }
+  #print-root {
+    display: block;
+  }
+}
+
+.receipt {
+  font-family: 'Courier New', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #000;
+  padding: 4mm 3mm;
+}
+.receipt .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.receipt hr {
+  border: 0;
+  border-top: 1px dashed #000;
+  margin: 4px 0;
+}
+.receipt .center {
+  text-align: center;
+}
+.receipt .big {
+  font-size: 15px;
+  font-weight: bold;
+}
