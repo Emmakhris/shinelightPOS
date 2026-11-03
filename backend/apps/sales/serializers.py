@@ -20,6 +20,7 @@ class PaymentInput(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=14, decimal_places=2)
     momo_network = serializers.ChoiceField(choices=MomoNetwork.choices, required=False, allow_blank=True)
     reference = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    paystack_reference = serializers.CharField(required=False, allow_blank=True, max_length=60)
 
 
 class QuoteInput(serializers.Serializer):

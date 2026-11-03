@@ -47,6 +47,22 @@ Open the address that `run.ps1` prints and follow the setup wizard. To make othe
 
 **Backups:** run `.\scripts\backup.ps1` daily (for example with Task Scheduler) and copy the `backups` folder off the computer.
 
+## Mobile money through Paystack
+
+When Paystack is set up, choosing **Mobile Money** at the till sends a payment prompt to the customer's phone (MTN, Telecel or AT). The till waits while they approve with their MoMo PIN; the network gives them 180 seconds. The sale can only be completed once the server has confirmed the payment with Paystack, for the exact amount, and each payment can be used on only one sale. Cashiers can still record a MoMo payment by hand ("Record manually instead"), for example when the customer sent money to your merchant number.
+
+1. Create a Paystack business account for Ghana and add your business email in **Settings → Business**. Paystack emails payment receipts to it.
+2. Put your secret key in `backend\.env` and restart the POS:
+   ```
+   PAYSTACK_SECRET_KEY=sk_test_...   # test mode: MTN 0551234987 approves without a PIN
+   ```
+   Switch to your `sk_live_...` key when you are ready to take real money. Keep the key secret: it never leaves the shop computer.
+3. Optional: if the POS is reachable from the internet, set the webhook URL in the Paystack dashboard to `https://<your-address>/api/payments/paystack/webhook/`. Without a webhook the till checks the payment status itself, which is the normal case for a shop PC.
+
+**Reports → Payments → Paystack MoMo prompts** lists every prompt. A payment that was approved but is **not on a sale** (for example, the cashier stopped waiting and the customer approved later) is flagged, so you can refund the customer or record the sale.
+
+**Training:** `PAYSTACK_SECRET_KEY=sk_fake` runs a built-in simulator that moves no money. Numbers ending in `0000` are declined, numbers ending in `1111` ask for the code `123456`, and all other numbers are approved.
+
 ## Development
 
 ```powershell
@@ -61,7 +77,7 @@ cd frontend; npm test
 cd frontend; npm run e2e   # builds the app, starts Django on a fresh database, drives a full shop day in Edge
 ```
 
-The end-to-end test (`frontend/e2e/pos.spec.ts`) goes through setup, a scanned sale with options paid by MoMo plus cash, a cash refund, a restaurant table order with a kitchen ticket, closing the shift (expected vs. counted cash) and the reports. It uses the installed Microsoft Edge because Windows can block Playwright's own Chromium build. Set `E2E_BROWSER=chromium` to use Playwright's Chromium instead.
+The end-to-end test (`frontend/e2e/pos.spec.ts`) goes through setup, a scanned sale with options paid by a Paystack MoMo prompt (simulated, including a declined attempt) plus cash, a cash refund, a restaurant table order with a kitchen ticket, closing the shift (expected vs. counted cash) and the reports. It uses the installed Microsoft Edge because Windows can block Playwright's own Chromium build. Set `E2E_BROWSER=chromium` to use Playwright's Chromium instead.
 
 The local development database (`backend\db.sqlite3`) was created during testing. It has demo data and a test owner account: username `owner`, password `owner123`, PIN `1234`. Delete `db.sqlite3` and run `python manage.py migrate` to start fresh.
 
@@ -90,7 +106,7 @@ scripts/   setup, run, dev and backup scripts (PowerShell)
 
 ## Roadmap
 - **Phase 2:**
-  - Payments and invoicing: live MoMo/card payments (Paystack or Hubtel), GRA E-VAT submission, and SMS/WhatsApp receipts.
+  - Payments and invoicing: ~~Paystack MoMo prompts~~ (done), refunds back through Paystack, card payments through Paystack Terminal, GRA E-VAT submission, and SMS/WhatsApp receipts.
   - Restaurant: a kitchen display screen, split bills by item or seat, tips, and recipes that deduct ingredients.
   - Promotions and gift cards.
   - Multi-branch stock transfers.

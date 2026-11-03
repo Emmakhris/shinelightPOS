@@ -4,10 +4,18 @@ from .models import Branch, BusinessProfile, Expense, TaxRate
 
 
 class BusinessProfileSerializer(serializers.ModelSerializer):
+    # Paystack is configured with a secret key in backend/.env, never stored or shown here.
+    paystack_mode = serializers.SerializerMethodField()
+
     class Meta:
         model = BusinessProfile
         exclude = ["id"]
         read_only_fields = ["setup_complete", "updated_at"]
+
+    def get_paystack_mode(self, obj):
+        from apps.payments.paystack import mode
+
+        return mode()
 
 
 class BranchSerializer(serializers.ModelSerializer):
@@ -32,6 +40,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
 class SetupSerializer(serializers.Serializer):
     business_name = serializers.CharField(max_length=150)
     phone = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
     address = serializers.CharField(required=False, allow_blank=True)
     tin = serializers.CharField(max_length=50, required=False, allow_blank=True)
     vat_registered = serializers.BooleanField(default=False)

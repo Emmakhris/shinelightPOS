@@ -11,7 +11,7 @@ export function SetupPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [f, setF] = useState({
-    business_name: '', phone: '', address: '', tin: '', vat_registered: false,
+    business_name: '', phone: '', email: '', address: '', tin: '', vat_registered: false,
     retail_mode: true, restaurant_mode: false, prices_include_tax: true,
     owner_first_name: '', owner_last_name: '', owner_username: '', owner_password: '', owner_pin: '',
     demo_data: true,
@@ -54,6 +54,9 @@ export function SetupPage() {
                 <input className="input" value={f.tin} onChange={(e) => set('tin', e.target.value)} />
               </Field>
             </div>
+            <Field label="Business email" hint="Optional. Needed for MoMo prompts through Paystack, which emails payment receipts to it.">
+              <input className="input" type="email" value={f.email} onChange={(e) => set('email', e.target.value.trim())} />
+            </Field>
             <Field label="Address">
               <textarea className="input" rows={2} value={f.address} onChange={(e) => set('address', e.target.value)} />
             </Field>

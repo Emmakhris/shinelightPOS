@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "apps.sales",
     "apps.restaurant",
     "apps.reports",
+    "apps.payments",
 ]
 
 MIDDLEWARE = [
@@ -133,5 +134,9 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=12),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
+
+# Paystack mobile money: sk_test_... (test mode), sk_live_... (real money) or sk_fake (simulator).
+PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+PAYSTACK_BASE_URL = os.environ.get("PAYSTACK_BASE_URL", "https://api.paystack.co")
 
 CORS_ALLOWED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]

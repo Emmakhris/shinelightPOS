@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, downloadCsv, qs } from '../../api/client'
-import type { ShiftReport } from '../../api/types'
+import type { PaystackCharge, ShiftReport } from '../../api/types'
 import { ShiftReportDoc, printDoc } from '../../components/print'
 import { toast } from '../../components/toast'
-import { Button, Empty, Field, Loading, PageHeader, Stat, Tabs } from '../../components/ui'
+import { Badge, Button, Empty, Field, Loading, PageHeader, Stat, Tabs } from '../../components/ui'
 import { METHOD_LABELS, dateTime, isoDate, money, qty, toNumber } from '../../lib/format'
 import { useSettings } from '../../lib/hooks'
 
@@ -80,7 +80,12 @@ export function ReportsPage() {
       {tab === 'overview' && <Overview params={params} onExport={() => exportCsv('/reports/summary/', 'sales-by-day')} />}
       {(tab === 'products' || tab === 'categories') && <LineReport kind={tab} params={params} onExport={() => exportCsv(`/reports/${tab}/`, `sales-by-${tab}`)} />}
       {tab === 'cashiers' && <Cashiers params={params} onExport={() => exportCsv('/reports/cashiers/', 'sales-by-staff')} />}
-      {tab === 'payments' && <Payments params={params} onExport={() => exportCsv('/reports/payments/', 'payments')} />}
+      {tab === 'payments' && (
+        <div className="space-y-4">
+          <Payments params={params} onExport={() => exportCsv('/reports/payments/', 'payments')} />
+          <PaystackPayments params={params} />
+        </div>
+      )}
       {tab === 'tax' && <Tax params={params} onExport={() => exportCsv('/reports/tax/', 'tax')} />}
       {tab === 'valuation' && <Valuation />}
       {tab === 'z' && <EndOfDay />}
@@ -210,6 +215,59 @@ function Payments({ params, onExport }: { params: string; onExport: () => void }
         </table>
         {data.momo_networks.length === 0 && <Empty>No MoMo payments.</Empty>}
       </div>
+    </div>
+  )
+}
+
+/** Every MoMo prompt sent through Paystack, so money received without a finished sale stands out. */
+function PaystackPayments({ params }: { params: string }) {
+  const settings = useSettings().data
+  const charges = useQuery({
+    queryKey: ['report', 'paystack', params],
+    queryFn: () => api.get<PaystackCharge[]>(`/payments/momo/${params}`),
+    enabled: !!settings?.paystack_mode,
+  })
+  if (!settings?.paystack_mode) return null
+  const recheck = async (ref: string) => {
+    try {
+      await api.get(`/payments/momo/${ref}/?force=1`)
+      charges.refetch()
+    } catch (err) {
+      toast.error(err)
+    }
+  }
+  const unmatched = (charges.data ?? []).filter((c) => c.status === 'success' && !c.invoice_number)
+  return (
+    <div className="card overflow-x-auto">
+      <div className="flex flex-wrap items-center justify-between gap-2 p-3">
+        <h3 className="font-bold">Paystack MoMo prompts</h3>
+        {unmatched.length > 0 && (
+          <span className="rounded bg-red-50 px-2 py-1 text-sm font-semibold text-red-700">
+            {unmatched.length} paid but not on a sale ({money(unmatched.reduce((s, c) => s + toNumber(c.amount), 0))}). Refund the customer or record the sale.
+          </span>
+        )}
+      </div>
+      <table className="table">
+        <thead><tr><th>When</th><th>Phone</th><th>Network</th><th className="text-right">Amount</th><th>Status</th><th>Sale</th><th>Cashier</th><th></th></tr></thead>
+        <tbody>
+          {charges.data?.map((c) => (
+            <tr key={c.reference}>
+              <td className="whitespace-nowrap">{dateTime(c.created_at)}</td>
+              <td>{c.phone}</td>
+              <td className="uppercase">{c.network}</td>
+              <td className="text-right">{money(c.amount)}</td>
+              <td>
+                <Badge color={c.status === 'success' ? 'green' : c.status === 'failed' ? 'red' : 'amber'}>{c.status_label}</Badge>
+                {c.message && c.status !== 'success' && <div className="text-xs text-slate-500">{c.message}</div>}
+              </td>
+              <td>{c.invoice_number ?? (c.status === 'success' ? <Badge color="red">Not on a sale</Badge> : '')}</td>
+              <td>{c.created_by_name}</td>
+              <td className="text-right">{c.status !== 'success' && <Button size="sm" variant="ghost" onClick={() => recheck(c.reference)}>Recheck</Button>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {charges.data?.length === 0 && <Empty>No Paystack MoMo prompts in this period.</Empty>}
     </div>
   )
 }

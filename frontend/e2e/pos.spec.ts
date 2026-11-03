@@ -35,6 +35,7 @@ test.afterAll(async () => {
 test('first-run setup creates the business and signs the owner in', async () => {
   await page.goto('/')
   await page.getByLabel('Business name').fill('E2E Mart')
+  await page.getByLabel('Business email').fill('shop@example.com')
   await page.getByLabel('Restaurant / bar').check()
   await page.getByLabel('VAT registered with GRA').check()
   await page.getByRole('button', { name: 'Next' }).click()
@@ -48,7 +49,7 @@ test('first-run setup creates the business and signs the owner in', async () => 
   await expect(page.getByRole('heading', { name: /Good (morning|afternoon|evening)/ })).toBeVisible()
 })
 
-test('retail sale: scan, add options, split MoMo and cash, give change', async () => {
+test('retail sale: scan, add options, Paystack MoMo prompt plus cash, give change', async () => {
   await page.goto('/pos')
   await page.getByRole('button', { name: 'Open shift to start selling' }).click()
   await typeOnPad('200')
@@ -72,9 +73,22 @@ test('retail sale: scan, add options, split MoMo and cash, give change', async (
   await page.getByRole('button', { name: 'Pay GH₵ 45.00' }).click()
 
   await dialog().getByRole('button', { name: 'Mobile Money' }).click()
-  await dialog().getByPlaceholder('MoMo transaction ID').fill('MP-E2E-0001')
+  await expect(dialog().getByText('Paystack simulator: no real money is taken.')).toBeVisible()
   await typeOnPad('20')
-  await dialog().getByRole('button', { name: 'Add Mobile Money' }).click()
+  await dialog().getByRole('button', { name: 'Send MoMo prompt' }).click()
+
+  // The simulator declines numbers ending in 0000: the cashier sees why and tries another number.
+  const prompt = dialog()
+  await expect(prompt.getByText('MoMo prompt · GH₵ 20.00')).toBeVisible()
+  await prompt.getByLabel("Customer's MoMo number").fill('0240000000')
+  await prompt.getByRole('button', { name: 'Send prompt to phone' }).click()
+  await expect(prompt.getByText('Waiting for the customer to approve…')).toBeVisible()
+  await expect(prompt.getByText(/Payment failed: Declined by customer/)).toBeVisible()
+  await prompt.getByLabel("Customer's MoMo number").fill('0241234567')
+  await prompt.getByRole('button', { name: 'Try again' }).click()
+  await expect(page.getByText('MoMo payment of GH₵ 20.00 received')).toBeVisible()
+  await expect(dialog().getByText('✓ Paystack')).toBeVisible()
+
   await dialog().getByRole('button', { name: '50.00', exact: true }).click()
   await dialog().getByRole('button', { name: 'Complete sale' }).click()
 
@@ -83,7 +97,7 @@ test('retail sale: scan, add options, split MoMo and cash, give change', async (
   await expect(dialog().getByText('GH₵ 25.00')).toBeVisible() // change
   await dialog().getByRole('button', { name: '🖨 Print receipt' }).click()
   await expect.poll(printed).toContain('TAX INVOICE')
-  expect(await printed()).toContain('MP-E2E-0001')
+  expect(await printed()).toMatch(/Mobile Money \(MTN\) #SLP-/)
   await dialog().getByRole('button', { name: 'New sale' }).click()
 })
 
@@ -156,6 +170,12 @@ test('reports add up the day', async () => {
   await expect(stat('Gross sales')).toContainText('GH₵ 75.00')
   await expect(stat('Tax collected')).toContainText('GH₵ 12.50') // 20% inside tax-inclusive prices
   await expect(stat('Refunds')).toContainText('GH₵ 8.00')
+
+  // Paystack reconciliation: the approved prompt is on sale 1, the declined one is listed as failed.
+  await page.getByRole('button', { name: 'Payments', exact: true }).click()
+  await expect(page.getByRole('row', { name: /0241234567/ })).toContainText('INV-MAIN-000001')
+  await expect(page.getByRole('row', { name: /0240000000/ })).toContainText('Failed')
+  await expect(page.getByText(/paid but not on a sale/)).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Tax (GRA)' }).click()
   await expect(page.getByRole('row', { name: /VAT/ })).toContainText('GH₵ 9.38')

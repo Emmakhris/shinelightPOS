@@ -39,6 +39,7 @@ def setup(request):
         profile = BusinessProfile.get()
         profile.name = d["business_name"]
         profile.phone = d.get("phone", "")
+        profile.email = d.get("email", "")
         profile.address = d.get("address", "")
         profile.tin = d.get("tin", "")
         profile.vat_registered = d["vat_registered"]

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import type { Customer, PaymentInput, PaymentMethod } from '../../api/types'
+import type { Customer, PaymentInput, PaymentMethod, PaystackCharge } from '../../api/types'
+import { MomoPrompt } from './MomoPrompt'
 import { NumPad } from '../../components/NumPad'
 import { toast } from '../../components/toast'
 import { Button, Modal } from '../../components/ui'
@@ -22,6 +23,12 @@ export function PaymentModal({ total, customer, onClose, onComplete, busy }: {
   const [amount, setAmount] = useState('')
   const [network, setNetwork] = useState('mtn')
   const [reference, setReference] = useState('')
+  // With Paystack set up, MoMo goes out as a prompt to the customer's phone; cashiers can
+  // still record a MoMo payment by hand (e.g. the customer paid to the merchant number).
+  const [manualMomo, setManualMomo] = useState(false)
+  const [prompting, setPrompting] = useState<number | null>(null)
+  const paystackMode = settings?.paystack_mode ?? null
+  const usePrompt = method === 'momo' && !!paystackMode && !manualMomo
 
   const paid = round2(payments.reduce((s, p) => s + toNumber(p.amount), 0))
   const remaining = round2(Math.max(total - paid, 0))
@@ -53,6 +60,10 @@ export function PaymentModal({ total, customer, onClose, onComplete, busy }: {
       toast.error(`${METHOD_LABELS[method]} cannot be more than the ${money(remaining)} still due.`)
       return
     }
+    if (usePrompt) {
+      setPrompting(amt)
+      return
+    }
     setPayments((prev) => [
       ...prev,
       {
@@ -68,9 +79,38 @@ export function PaymentModal({ total, customer, onClose, onComplete, busy }: {
   }
 
   const canFinish = paid >= total && payments.length > 0
+  const takenByPaystack = payments.some((p) => p.paystack_reference)
+
+  const addConfirmedMomo = (charge: PaystackCharge) => {
+    setPayments((prev) => [
+      ...prev,
+      {
+        method: 'momo',
+        amount: toNumber(charge.amount).toFixed(2),
+        momo_network: charge.network,
+        reference: charge.reference,
+        paystack_reference: charge.reference,
+      },
+    ])
+    setPrompting(null)
+    setAmount('')
+    setMethod('cash')
+    toast.success(`MoMo payment of ${money(charge.amount)} received`)
+  }
+
+  const removePayment = (index: number) => {
+    if (payments[index].paystack_reference &&
+        !window.confirm('This MoMo money has already been received. Remove it from this sale? It will show as unmatched under Reports → Payments.')) return
+    setPayments(payments.filter((_, j) => j !== index))
+  }
+
+  const close = () => {
+    if (takenByPaystack && !window.confirm('MoMo money has already been received for this sale. Close without completing the sale?')) return
+    onClose()
+  }
 
   return (
-    <Modal open onClose={onClose} title="Payment" size="lg">
+    <Modal open onClose={close} title="Payment" size="lg">
       <div className="grid gap-4 md:grid-cols-2">
         <div>
           <div className="mb-3 rounded-xl bg-slate-900 p-4 text-white">
@@ -106,13 +146,26 @@ export function PaymentModal({ total, customer, onClose, onComplete, busy }: {
               ))}
             </div>
           )}
-          {(method === 'momo' || method === 'card' || method === 'bank') && (
+          {((method === 'momo' && !usePrompt) || method === 'card' || method === 'bank') && (
             <input
               className="input mb-3"
               placeholder={method === 'momo' ? 'MoMo transaction ID' : 'Reference / approval code'}
               value={reference}
               onChange={(e) => setReference(e.target.value)}
             />
+          )}
+          {method === 'momo' && paystackMode && (
+            <div className="mb-3 text-xs text-slate-600">
+              {usePrompt ? 'A payment prompt goes to the customer\'s phone through Paystack. ' : 'Recording a MoMo payment by hand. '}
+              <button className="font-semibold text-brand-700 underline" onClick={() => setManualMomo(!manualMomo)}>
+                {usePrompt ? 'Record manually instead' : 'Use Paystack prompt'}
+              </button>
+              {paystackMode !== 'live' && (
+                <span className="mt-1 block rounded bg-amber-50 px-2 py-1 font-semibold text-amber-800">
+                  Paystack {paystackMode === 'simulated' ? 'simulator' : 'test mode'}: no real money is taken.
+                </span>
+              )}
+            </div>
           )}
           {method === 'credit' && <p className="mb-3 text-xs text-slate-500">Credit available: {money(creditAvailable)}</p>}
           {method === 'points' && (
@@ -126,11 +179,12 @@ export function PaymentModal({ total, customer, onClose, onComplete, busy }: {
                 <span>
                   {METHOD_LABELS[p.method]}
                   {p.momo_network && ` · ${p.momo_network.toUpperCase()}`}
-                  {p.reference && ` · ${p.reference}`}
+                  {p.reference && !p.paystack_reference && ` · ${p.reference}`}
+                  {p.paystack_reference && <span className="ml-1 rounded bg-emerald-100 px-1.5 text-xs font-semibold text-emerald-800">✓ Paystack</span>}
                 </span>
                 <span className="flex items-center gap-2 font-semibold">
                   {money(p.amount)}
-                  <button className="text-red-500" onClick={() => setPayments(payments.filter((_, j) => j !== i))}>
+                  <button className="text-red-500" onClick={() => removePayment(i)}>
                     ✕
                   </button>
                 </span>
@@ -154,7 +208,7 @@ export function PaymentModal({ total, customer, onClose, onComplete, busy }: {
           <NumPad value={amount} onChange={setAmount} />
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Button variant="secondary" size="lg" disabled={remaining <= 0 && method !== 'cash'} onClick={() => add()}>
-              Add {METHOD_LABELS[method]}
+              {usePrompt ? 'Send MoMo prompt' : `Add ${METHOD_LABELS[method]}`}
             </Button>
             <Button
               variant="success"
@@ -168,6 +222,15 @@ export function PaymentModal({ total, customer, onClose, onComplete, busy }: {
           </div>
         </div>
       </div>
+      {prompting !== null && (
+        <MomoPrompt
+          amount={prompting}
+          phone={customer?.phone ?? ''}
+          network={network}
+          onConfirmed={addConfirmedMomo}
+          onClose={() => setPrompting(null)}
+        />
+      )}
     </Modal>
   )
 }

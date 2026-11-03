@@ -42,6 +42,25 @@ export interface BusinessSettings {
   receipt_width: 80 | 58
   show_tax_on_receipt: boolean
   setup_complete: boolean
+  /** null = Paystack not set up; "simulated" = built-in simulator (sk_fake). */
+  paystack_mode: 'live' | 'test' | 'simulated' | null
+}
+
+export interface PaystackCharge {
+  reference: string
+  amount: string
+  currency: string
+  phone: string
+  network: string
+  status: 'pending' | 'pay_offline' | 'send_otp' | 'success' | 'failed' | 'abandoned'
+  status_label: string
+  display_text: string
+  message: string
+  created_at: string
+  paid_at: string | null
+  invoice_number: string | null
+  sale: number | null
+  created_by_name: string | null
 }
 
 export interface TaxRate {
@@ -171,6 +190,8 @@ export interface PaymentInput {
   amount: string
   momo_network?: string
   reference?: string
+  /** Set when the money was taken through a Paystack MoMo prompt; the server re-checks it. */
+  paystack_reference?: string
 }
 
 export interface Quote {

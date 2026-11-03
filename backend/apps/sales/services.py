@@ -72,6 +72,22 @@ def _validate_payments(payments, total, customer, profile):
     return paid, credit, points_needed
 
 
+def _confirmed_paystack_charge(p):
+    """A MoMo payment taken through Paystack counts only if the server itself saw it succeed."""
+    from apps.payments.models import PaystackCharge
+
+    charge = PaystackCharge.objects.select_for_update().filter(reference=p["paystack_reference"]).first()
+    if charge is None or p["method"] != PaymentMethod.MOMO:
+        raise BusinessError("Unknown Paystack payment.")
+    if charge.status != PaystackCharge.Status.SUCCESS:
+        raise BusinessError("That MoMo payment has not been confirmed by Paystack.", code="paystack_unconfirmed")
+    if charge.payment_id:
+        raise BusinessError("That MoMo payment is already used on another sale.", code="paystack_used")
+    if charge.amount != money(p["amount"]):
+        raise BusinessError("The MoMo payment amount does not match.")
+    return charge
+
+
 @transaction.atomic
 def create_sale(user, data, order_type=OrderType.RETAIL, table_name=""):
     """
@@ -121,10 +137,15 @@ def create_sale(user, data, order_type=OrderType.RETAIL, table_name=""):
     for code, t in cart.taxes.items():
         SaleTax.objects.create(sale=sale, code=code, name=t["name"], rate=t["rate"], amount=t["amount"])
     for p in payments:
-        Payment.objects.create(
+        charge = _confirmed_paystack_charge(p) if p.get("paystack_reference") else None
+        payment = Payment.objects.create(
             sale=sale, method=p["method"], amount=money(p["amount"]),
-            momo_network=p.get("momo_network") or "", reference=p.get("reference") or "",
+            momo_network=charge.network if charge else (p.get("momo_network") or ""),
+            reference=charge.reference if charge else (p.get("reference") or ""),
         )
+        if charge:
+            charge.payment = payment
+            charge.save(update_fields=["payment", "updated_at"])
 
     if customer:
         if credit:
