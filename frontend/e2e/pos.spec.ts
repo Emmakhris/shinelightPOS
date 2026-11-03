@@ -49,6 +49,18 @@ test('first-run setup creates the business and signs the owner in', async () => 
   await expect(page.getByRole('heading', { name: /Good (morning|afternoon|evening)/ })).toBeVisible()
 })
 
+test('backups: the dashboard warns until a backup is made', async () => {
+  await expect(page.getByText('No backup has been made yet.')).toBeVisible()
+  await page.goto('/settings')
+  await page.getByRole('button', { name: 'Backups', exact: true }).click()
+  await page.getByRole('button', { name: 'Back up now' }).click()
+  await expect(page.getByText('Backup complete')).toBeVisible()
+  await expect(page.getByRole('row', { name: /_manual/ })).toBeVisible()
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: /Good/ })).toBeVisible()
+  await expect(page.getByText('No backup has been made yet.')).toHaveCount(0)
+})
+
 test('retail sale: scan, add options, Paystack MoMo prompt plus cash, give change', async () => {
   await page.goto('/pos')
   await page.getByRole('button', { name: 'Open shift to start selling' }).click()

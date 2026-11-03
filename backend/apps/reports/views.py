@@ -283,6 +283,13 @@ def z_report(request):
     return Response(report)
 
 
+def _last_backup_iso():
+    from apps.business.backups import last_backup_time
+
+    when = last_backup_time()
+    return when.isoformat() if when else None
+
+
 @api_view(["GET"])
 @permission_classes([HasPerm("sell")])
 def dashboard(request):
@@ -309,6 +316,7 @@ def dashboard(request):
             "open_shifts": Shift.objects.filter(status=Shift.Status.OPEN).count(),
             "open_orders": Order.objects.filter(status=Order.Status.OPEN).count(),
             "customers_owing": _s(Customer.objects.aggregate(t=Sum("balance"))["t"]),
+            "last_backup_at": _last_backup_iso(),
             # With no ?start/end in the query string this covers today.
             "top_products": _line_rows(request, ["variant", "name"], "name")[:5],
         })

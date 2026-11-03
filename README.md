@@ -36,16 +36,20 @@ A point-of-sale system for Ghanaian retail shops and restaurants. It is installe
 
 You need [Python 3.12+](https://www.python.org/downloads/) and [Node.js 20+](https://nodejs.org/).
 
+In PowerShell **as Administrator**:
+
 ```powershell
-.\scripts\setup.ps1     # installs everything, creates backend\.env, builds the app
-.\scripts\run.ps1       # starts the POS and prints the address for other devices
+.\scripts\setup.ps1             # installs everything, creates backend\.env, builds the app
+.\scripts\install-service.ps1   # starts with Windows, restarts if it stops, nightly backups, firewall
 ```
 
-Open the address that `run.ps1` prints and follow the setup wizard. To make other devices on the network able to connect, allow port 8000 through Windows Firewall.
+Open the address that `install-service.ps1` prints and follow the setup wizard. **[docs/SHOP-SETUP.md](docs/SHOP-SETUP.md)** is the full guide for the shop owner: a fixed address for the shop PC, connecting tills, printers, backups and restoring.
+
+To try the POS without installing it as a start-up task, run `.\scripts\run.ps1` instead (it stops when the window closes).
 
 **Several tills:** SQLite works well for one or two tills. For more, install PostgreSQL and set `DATABASE_URL` in `backend\.env` (see `backend\.env.example`).
 
-**Backups:** run `.\scripts\backup.ps1` daily (for example with Task Scheduler) and copy the `backups` folder off the computer.
+**Backups:** these run every evening once the service is installed, or on demand with **Settings → Backups** or `.\scripts\backup.ps1`. Restore with `.\scripts\restore.ps1`. Copy the `backups` folder off the computer regularly.
 
 ## Mobile money through Paystack
 

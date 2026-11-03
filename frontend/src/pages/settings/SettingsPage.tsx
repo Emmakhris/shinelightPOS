@@ -7,7 +7,7 @@ import { Button, Field, Loading, Modal, PageHeader, Tabs, Toggle } from '../../c
 import { useSettings } from '../../lib/hooks'
 import { useAuth } from '../../stores/auth'
 
-type Tab = 'business' | 'selling' | 'receipt' | 'taxes' | 'tables'
+type Tab = 'business' | 'selling' | 'receipt' | 'taxes' | 'tables' | 'backups'
 
 export function SettingsPage() {
   const can = useAuth((s) => s.can)
@@ -23,6 +23,7 @@ export function SettingsPage() {
         ]
       : []),
     { value: 'tables', label: 'Tables' },
+    ...(owner ? [{ value: 'backups' as const, label: 'Backups' }] : []),
   ]
   return (
     <div>
@@ -33,6 +34,68 @@ export function SettingsPage() {
       {tab === 'receipt' && <SettingsForm fields="receipt" />}
       {tab === 'taxes' && <Taxes />}
       {tab === 'tables' && <Tables />}
+      {tab === 'backups' && <Backups />}
+    </div>
+  )
+}
+
+interface BackupInfo {
+  name: string
+  created_at: string
+  label: string
+  engine: string
+  sales: number
+  last_invoice: string | null
+  size_bytes: number
+}
+
+function Backups() {
+  const qc = useQueryClient()
+  const backups = useQuery({ queryKey: ['backups'], queryFn: () => api.get<BackupInfo[]>('/backups/') })
+  const [busy, setBusy] = useState(false)
+  const runNow = async () => {
+    setBusy(true)
+    try {
+      await api.post('/backups/')
+      qc.invalidateQueries({ queryKey: ['backups'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      toast.success('Backup complete')
+    } catch (err) {
+      toast.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const size = (b: number) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(b / 1024)} KB`)
+  return (
+    <div className="max-w-3xl">
+      <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600">
+        Backups are saved in the <code>backups</code> folder on the shop computer. Once the POS is installed with
+        <code className="mx-1">scripts\install-service.ps1</code>, a backup runs every evening and the newest 30 are kept.
+        Copy that folder to a flash drive or cloud storage regularly: a backup on the same computer does not help if the computer is lost.
+        To restore one, run <code>scripts\restore.ps1</code> on the shop computer.
+      </div>
+      <Button className="mb-3" loading={busy} onClick={runNow}>Back up now</Button>
+      <div className="card overflow-x-auto">
+        {backups.isLoading ? <Loading /> : (
+          <table className="table">
+            <thead><tr><th>Name</th><th>Taken</th><th>Type</th><th className="text-right">Sales</th><th>Last invoice</th><th className="text-right">Size</th></tr></thead>
+            <tbody>
+              {backups.data?.map((b) => (
+                <tr key={b.name}>
+                  <td className="font-mono text-xs">{b.name}</td>
+                  <td>{new Date(b.created_at).toLocaleString('en-GB')}</td>
+                  <td>{b.label}</td>
+                  <td className="text-right">{b.sales}</td>
+                  <td className="font-mono text-xs">{b.last_invoice}</td>
+                  <td className="text-right">{size(b.size_bytes)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {backups.data?.length === 0 && <p className="p-6 text-center text-sm text-slate-500">No backups yet.</p>}
+      </div>
     </div>
   )
 }

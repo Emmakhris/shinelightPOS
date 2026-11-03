@@ -135,6 +135,9 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
 
+BACKUP_DIR = Path(os.environ.get("BACKUP_DIR", PROJECT_DIR / "backups"))
+BACKUP_KEEP = int(os.environ.get("BACKUP_KEEP", 30))
+
 # Paystack mobile money: sk_test_... (test mode), sk_live_... (real money) or sk_fake (simulator).
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
 PAYSTACK_BASE_URL = os.environ.get("PAYSTACK_BASE_URL", "https://api.paystack.co")

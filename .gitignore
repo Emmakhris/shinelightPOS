@@ -19,3 +19,5 @@ backups/
 frontend/test-results/
 frontend/playwright-report/
 backend/e2e.sqlite3
+backend/e2e-backups/
+logs/

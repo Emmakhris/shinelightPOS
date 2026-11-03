@@ -12,5 +12,6 @@ urlpatterns = [
     path("setup/status/", views.setup_status),
     path("setup/", views.setup),
     path("settings/", views.business_settings),
+    path("backups/", views.backups),
     path("", include(router.urls)),
 ]

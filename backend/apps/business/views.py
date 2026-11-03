@@ -84,6 +84,22 @@ def business_settings(request):
     return Response(s.data)
 
 
+@api_view(["GET", "POST"])
+@permission_classes([HasPerm("manage_settings")])
+def backups(request):
+    """List backups, or take one now. Restoring is done from the shop PC (scripts/restore.ps1)."""
+    from .backups import BackupError, create_backup, list_backups
+
+    if request.method == "POST":
+        try:
+            folder = create_backup(label="manual")
+        except BackupError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        audit("backup_created", request.user, "backup", folder.name)
+        return Response({"name": folder.name}, status=status.HTTP_201_CREATED)
+    return Response(list_backups())
+
+
 class BranchViewSet(viewsets.ModelViewSet):
     queryset = Branch.objects.all()
     serializer_class = BranchSerializer

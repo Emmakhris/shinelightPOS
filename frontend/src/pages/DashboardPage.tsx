@@ -13,7 +13,10 @@ interface Dashboard {
   open_orders?: number
   customers_owing?: string
   top_products?: { name: string; quantity: string; revenue: string }[]
+  last_backup_at?: string | null
 }
+
+const BACKUP_WARNING_HOURS = 48
 
 export function DashboardPage() {
   const settings = useSettings().data
@@ -21,10 +24,18 @@ export function DashboardPage() {
   const today = toNumber(data?.today.total)
   const yesterday = toNumber(data?.yesterday.total)
   const change = yesterday ? Math.round(((today - yesterday) / yesterday) * 100) : null
+  const backupAgeHours = data?.last_backup_at ? (Date.now() - new Date(data.last_backup_at).getTime()) / 3_600_000 : null
+  const backupWarning = data && data.last_backup_at !== undefined && (backupAgeHours === null || backupAgeHours > BACKUP_WARNING_HOURS)
 
   return (
     <div>
       <PageHeader title={`Good ${greeting()}!`} subtitle={settings?.name} />
+      {backupWarning && (
+        <Link to="/settings" className="mb-4 block rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 hover:bg-red-100">
+          <b>{backupAgeHours === null ? 'No backup has been made yet.' : `The last backup was ${Math.floor(backupAgeHours / 24)} days ago.`}</b>{' '}
+          If this computer fails, your sales and stock records could be lost. Open Settings → Backups.
+        </Link>
+      )}
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           label="Sales today"

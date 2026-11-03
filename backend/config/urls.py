@@ -2,9 +2,25 @@ from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path, re_path
 from django.views.generic import TemplateView
+from django.db import connection
+from django.http import JsonResponse
+from django.utils import timezone
 from django.views.static import serve
 
+
+def health(request):
+    """For scripts and monitoring: is the server up and can it reach the database?"""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        db = "ok"
+    except Exception:  # report rather than crash: this is what a health check is for
+        db = "error"
+    return JsonResponse({"ok": db == "ok", "database": db, "time": timezone.now().isoformat()},
+                        status=200 if db == "ok" else 503)
+
 api_patterns = [
+    path("health/", health),
     path("", include("apps.accounts.urls")),
     path("", include("apps.business.urls")),
     path("catalog/", include("apps.catalog.urls")),

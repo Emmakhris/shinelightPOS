@@ -1,17 +1,18 @@
-# Start ShineLight POS for the shop. Other tills and tablets on the same Wi-Fi/network
-# open the address printed below in their browser.
+# Start ShineLight POS in this window (for trying it out). For everyday use, install it with
+# scripts\install-service.ps1 so it starts by itself with Windows.
 param([int]$Port = 8000)
 $ErrorActionPreference = "Stop"
-$backend = Join-Path (Split-Path -Parent $PSScriptRoot) "backend"
-Set-Location $backend
+. "$PSScriptRoot\common.ps1"
+Assert-Installed
 
-$ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-    Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } |
-    Select-Object -ExpandProperty IPAddress
+if (Wait-PosHealthy -Port $Port -Seconds 1) {
+    Write-Host "ShineLight POS is already running (probably installed as a start-up task)." -ForegroundColor Yellow
+    Show-PosAddresses -Port $Port
+    exit 0
+}
 
-Write-Host "ShineLight POS is running." -ForegroundColor Green
-Write-Host "  On this computer:  http://localhost:$Port"
-foreach ($ip in $ips) { Write-Host "  On other devices:  http://${ip}:$Port" }
+Write-Host "ShineLight POS is starting." -ForegroundColor Green
+Show-PosAddresses -Port $Port
 Write-Host "Keep this window open. Press Ctrl+C to stop."
-
-& .\.venv\Scripts\python.exe -m waitress --listen="0.0.0.0:$Port" --threads=8 config.wsgi:application
+Set-Location $Backend
+& $Python serve.py $Port

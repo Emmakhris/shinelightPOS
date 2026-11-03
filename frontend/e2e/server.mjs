@@ -13,13 +13,16 @@ const python = process.platform === 'win32'
 const db = path.join(backend, 'e2e.sqlite3')
 const port = process.env.E2E_PORT ?? '8001'
 
+const backups = path.join(backend, 'e2e-backups')
 rmSync(db, { force: true })
+rmSync(backups, { recursive: true, force: true })
 // sk_fake runs the built-in Paystack simulator: MoMo prompts work offline and move no money.
 const env = {
   ...process.env,
   DATABASE_URL: `sqlite:///${db.replace(/\\/g, '/')}`,
   DEBUG: 'true',
   PAYSTACK_SECRET_KEY: 'sk_fake',
+  BACKUP_DIR: backups,
 }
 
 const migrate = spawnSync(python, ['manage.py', 'migrate', '-v', '0'], { cwd: backend, env, stdio: 'inherit' })
