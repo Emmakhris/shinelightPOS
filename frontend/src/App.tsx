@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { api, setUnauthorizedHandler } from './api/client'
@@ -26,7 +26,6 @@ import { useAuth } from './stores/auth'
 
 export default function App() {
   const { user, loading, locked, init, logout } = useAuth()
-  const qc = useQueryClient()
   const setup = useQuery({
     queryKey: ['setup-status'],
     queryFn: () => api.get<{ setup_complete: boolean; business_name: string }>('/setup/status/'),
@@ -36,11 +35,6 @@ export default function App() {
     init()
     setUnauthorizedHandler(() => logout())
   }, [init, logout])
-
-  // A different person signed in: drop everything cached for the previous one.
-  useEffect(() => {
-    qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'setup-status' })
-  }, [user?.id, qc])
 
   let content
   if (setup.isLoading || loading) content = <Loading />

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { api, tokens } from '../api/client'
 import type { User } from '../api/types'
+import { clearUserData } from '../lib/queryClient'
 
 interface LoginResponse {
   access: string
@@ -43,22 +44,26 @@ export const useAuth = create<AuthState>((set, get) => ({
   async login(username, password) {
     const data = await api.post<LoginResponse>('/auth/login/', { username, password })
     tokens.set(data.access, data.refresh)
+    clearUserData()
     set({ user: data.user, locked: false })
   },
 
   async pinLogin(userId, pin) {
     const data = await api.post<LoginResponse>('/auth/pin-login/', { user_id: userId, pin })
     tokens.set(data.access, data.refresh)
+    clearUserData()
     set({ user: data.user, locked: false })
   },
 
   logout() {
     tokens.clear()
+    clearUserData()
     set({ user: null, locked: false })
   },
 
   lock() {
     tokens.clear()
+    clearUserData()
     set({ locked: true })
   },
 

@@ -58,7 +58,10 @@ Tests:
 ```powershell
 cd backend;  .\.venv\Scripts\python -m pytest
 cd frontend; npm test
+cd frontend; npm run e2e   # builds the app, starts Django on a fresh database, drives a full shop day in Edge
 ```
+
+The end-to-end test (`frontend/e2e/pos.spec.ts`) goes through setup, a scanned sale with options paid by MoMo plus cash, a cash refund, a restaurant table order with a kitchen ticket, closing the shift (expected vs. counted cash) and the reports. It uses the installed Microsoft Edge because Windows can block Playwright's own Chromium build. Set `E2E_BROWSER=chromium` to use Playwright's Chromium instead.
 
 The local development database (`backend\db.sqlite3`) was created during testing. It has demo data and a test owner account: username `owner`, password `owner123`, PIN `1234`. Delete `db.sqlite3` and run `python manage.py migrate` to start fresh.
 
