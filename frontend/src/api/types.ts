@@ -61,6 +61,24 @@ export interface PaystackCharge {
   invoice_number: string | null
   sale: number | null
   created_by_name: string | null
+  refunds: PaystackRefund[]
+}
+
+export interface PaystackRefund {
+  reference: string
+  amount: string
+  reason: string
+  status: 'sending' | 'pending' | 'processing' | 'needs-attention' | 'processed' | 'failed' | 'settled'
+  status_label: string
+  message: string
+  phone: string
+  network: string
+  charge_reference: string
+  refund_number: string | null
+  invoice_number: string | null
+  sale: number | null
+  created_at: string
+  created_by_name: string | null
 }
 
 export interface TaxRate {
@@ -227,6 +245,7 @@ export interface Payment {
   amount: string
   momo_network: string
   reference: string
+  paystack: { phone: string; refundable: string } | null
 }
 
 export interface Refund {
@@ -244,6 +263,7 @@ export interface Refund {
   user_name: string
   approved_by_name: string | null
   lines: { sale_line: number; name: string; quantity: string; amount: string }[]
+  paystack: PaystackRefund | null
 }
 
 export type SaleStatus = 'completed' | 'partially_refunded' | 'refunded' | 'voided'

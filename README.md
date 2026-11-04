@@ -65,7 +65,15 @@ When Paystack is set up, choosing **Mobile Money** at the till sends a payment p
 
 **Reports → Payments → Paystack MoMo prompts** lists every prompt. A payment that was approved but is **not on a sale** (for example, the cashier stopped waiting and the customer approved later) is flagged, so you can refund the customer or record the sale.
 
-**Training:** `PAYSTACK_SECRET_KEY=sk_fake` runs a built-in simulator that moves no money. Numbers ending in `0000` are declined, numbers ending in `1111` ask for the code `123456`, and all other numbers are approved.
+**Refunds:** on a sale paid by a Paystack prompt, **Refund…** offers *Mobile Money through Paystack*, which sends the money back to the same number after manager approval. Money that never reached a sale can be returned with **Send back** in the report above.
+- Paystack takes refunds from your Paystack balance, so a refund can be refused if the balance is too low. A processed refund can still take up to 10 business days to reach the customer.
+- The items and sales totals are updated first, then the refund is sent. If Paystack refuses it, the sale shows **Failed** with the reason, and the customer is still owed the money: use **Try again**, or pay them another way and press **Paid by hand**. If a cash payment comes out of the drawer this way, record it as a cash-out on the shift.
+- If the connection drops, the refund shows **Not sent yet**. **Check status** finds out what happened and sends it if needed, and the same refund can't be paid twice.
+- A refund goes back through one Paystack payment at a time, up to the amount left on that payment. Sales paid through Paystack can't be voided, because a void would not return the customer's money.
+
+**Reports → Payments → Paystack refunds** lists every refund and its status. Without a webhook, press **Check status** to update it.
+
+**Training:** `PAYSTACK_SECRET_KEY=sk_fake` runs a built-in simulator that moves no money. Numbers ending in `0000` are declined, numbers ending in `1111` ask for the code `123456`, and all other numbers are approved. For refunds, a payment from a number ending in `2222` is refused when sent, one ending in `3333` fails on the first status check, and all others are sent back on the first status check.
 
 ## Development
 
@@ -81,7 +89,7 @@ cd frontend; npm test
 cd frontend; npm run e2e   # builds the app, starts Django on a fresh database, drives a full shop day in Edge
 ```
 
-The end-to-end test (`frontend/e2e/pos.spec.ts`) goes through setup, a scanned sale with options paid by a Paystack MoMo prompt (simulated, including a declined attempt) plus cash, a cash refund, a restaurant table order with a kitchen ticket, closing the shift (expected vs. counted cash) and the reports. It uses the installed Microsoft Edge because Windows can block Playwright's own Chromium build. Set `E2E_BROWSER=chromium` to use Playwright's Chromium instead.
+The end-to-end test (`frontend/e2e/pos.spec.ts`) goes through setup, a scanned sale with options paid by a Paystack MoMo prompt (simulated, including a declined attempt) plus cash, a cash refund and a refund through Paystack, a restaurant table order with a kitchen ticket, closing the shift (expected vs. counted cash) and the reports. It uses the installed Microsoft Edge because Windows can block Playwright's own Chromium build. Set `E2E_BROWSER=chromium` to use Playwright's Chromium instead.
 
 The local development database (`backend\db.sqlite3`) was created during testing. It has demo data and a test owner account: username `owner`, password `owner123`, PIN `1234`. Delete `db.sqlite3` and run `python manage.py migrate` to start fresh.
 
@@ -110,7 +118,7 @@ scripts/   setup, run, dev and backup scripts (PowerShell)
 
 ## Roadmap
 - **Phase 2:**
-  - Payments and invoicing: ~~Paystack MoMo prompts~~ (done), refunds back through Paystack, card payments through Paystack Terminal, GRA E-VAT submission, and SMS/WhatsApp receipts.
+  - Payments and invoicing: ~~Paystack MoMo prompts and refunds~~ (done), card payments through Paystack Terminal, GRA E-VAT submission, and SMS/WhatsApp receipts.
   - Restaurant: a kitchen display screen, split bills by item or seat, tips, and recipes that deduct ingredients.
   - Promotions and gift cards.
   - Multi-branch stock transfers.

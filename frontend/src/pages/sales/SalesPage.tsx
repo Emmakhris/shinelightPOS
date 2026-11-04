@@ -5,6 +5,7 @@ import type { Paginated, PaymentMethod, Refund, Sale, SaleStatus, SaleSummary } 
 import { isCancelled, withApproval } from '../../components/approval'
 import { ReceiptDoc, RefundDoc, printDoc } from '../../components/print'
 import { toast } from '../../components/toast'
+import { PaystackRefundActions } from '../../components/PaystackRefundActions'
 import { Badge, Button, Empty, Field, Loading, Modal, PageHeader, Toggle } from '../../components/ui'
 import { METHOD_LABELS, ORDER_TYPE_LABELS, dateTime, isoDate, money, qty, toNumber } from '../../lib/format'
 import { useRefreshAfterSale, useSettings } from '../../lib/hooks'
@@ -189,12 +190,20 @@ export function SaleDetailModal({ id, onClose }: { id: number; onClose: () => vo
             <div>
               <div className="label">Refunds</div>
               {s.refunds.map((r) => (
-                <div key={r.id} className="mb-1 flex items-center justify-between rounded bg-amber-50 px-3 py-2 text-sm">
-                  <span>{r.number} · {dateTime(r.created_at)} · {METHOD_LABELS[r.method]} · {r.reason}</span>
-                  <span className="flex items-center gap-2 font-semibold">
-                    {money(r.amount)}
-                    <button className="text-xs text-brand-700" onClick={() => settings && printDoc(<RefundDoc refund={r} settings={settings} />, settings.receipt_width)}>Print</button>
-                  </span>
+                <div key={r.id} className="mb-1 rounded bg-amber-50 px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span>{r.number} · {dateTime(r.created_at)} · {METHOD_LABELS[r.method]} · {r.reason}</span>
+                    <span className="flex items-center gap-2 font-semibold">
+                      {money(r.amount)}
+                      <button className="text-xs text-brand-700" onClick={() => settings && printDoc(<RefundDoc refund={r} settings={settings} />, settings.receipt_width)}>Print</button>
+                    </span>
+                  </div>
+                  {r.paystack && (
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <span>Paystack to {r.paystack.phone}:</span>
+                      <PaystackRefundActions refund={r.paystack} onChange={() => { qc.invalidateQueries({ queryKey: ['sale', id] }); refresh() }} />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -209,7 +218,11 @@ export function SaleDetailModal({ id, onClose }: { id: number; onClose: () => vo
             setRefunding(false)
             qc.invalidateQueries({ queryKey: ['sale', id] })
             refresh()
-            toast.success(`Refunded ${money(r.amount)}`)
+            if (r.paystack?.status === 'failed' || r.paystack?.status === 'sending') {
+              toast.error(`The refund is recorded, but the customer has not been paid yet. ${r.paystack.message}`)
+            } else {
+              toast.success(`Refunded ${money(r.amount)}`)
+            }
             if (settings && window.confirm('Print refund slip?')) printDoc(<RefundDoc refund={r} settings={settings} />, settings.receipt_width)
           }}
         />
@@ -229,8 +242,15 @@ function Info({ label, value }: { label: string; value: ReactNode }) {
 
 function RefundModal({ sale, onClose, onDone }: { sale: Sale; onClose: () => void; onDone: (r: Refund) => void }) {
   const [quantities, setQuantities] = useState<Record<number, number>>({})
+  const settings = useSettings().data
   const firstMethod = sale.payments.find((p) => p.method !== 'points')?.method ?? 'cash'
-  const [method, setMethod] = useState<PaymentMethod>(firstMethod)
+  // Paystack can send back up to what is left on one payment.
+  const paystackPayment = settings?.paystack_mode
+    ? sale.payments.filter((p) => p.paystack && toNumber(p.paystack.refundable) > 0)
+      .sort((a, b) => toNumber(b.paystack!.refundable) - toNumber(a.paystack!.refundable))[0]
+    : undefined
+  const [method, setMethod] = useState<PaymentMethod | 'paystack'>(paystackPayment ? 'paystack' : firstMethod)
+  const throughPaystack = method === 'paystack'
   const [reason, setReason] = useState('')
   const [reference, setReference] = useState('')
   const [restock, setRestock] = useState(true)
@@ -246,7 +266,8 @@ function RefundModal({ sale, onClose, onDone }: { sale: Sale; onClose: () => voi
       const refund = await withApproval((pin) =>
         api.post<Refund>(`/sales/${sale.id}/refund/`, {
           lines: selected.map(([line, quantity]) => ({ line: Number(line), quantity: String(quantity) })),
-          method, reason, restock, reference, approval_pin: pin,
+          method: throughPaystack ? 'momo' : method, through_paystack: throughPaystack,
+          reason, restock, reference: throughPaystack ? '' : reference, approval_pin: pin,
         }),
       )
       onDone(refund)
@@ -295,15 +316,22 @@ function RefundModal({ sale, onClose, onDone }: { sale: Sale; onClose: () => voi
       </table>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Refund by">
-          <select className="input" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
+          <select className="input" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod | 'paystack')}>
+            {paystackPayment && <option value="paystack">Mobile Money through Paystack</option>}
             {(['cash', 'momo', 'card', 'bank', ...(sale.customer ? ['credit'] : [])] as PaymentMethod[]).map((m) => (
               <option key={m} value={m}>{m === 'credit' ? 'Reduce customer balance' : METHOD_LABELS[m]}</option>
             ))}
           </select>
         </Field>
-        <Field label="Reference (MoMo / card)">
-          <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
-        </Field>
+        {throughPaystack && paystackPayment?.paystack ? (
+          <p className="self-end text-sm text-slate-600">
+            Sends the money to <b>{paystackPayment.paystack.phone}</b>. Up to {money(paystackPayment.paystack.refundable)} can go back this way.
+          </p>
+        ) : (
+          <Field label="Reference (MoMo / card)">
+            <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
+          </Field>
+        )}
         <Field label="Reason" className="sm:col-span-2">
           <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Damaged, wrong size" />
         </Field>

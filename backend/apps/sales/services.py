@@ -83,6 +83,8 @@ def _confirmed_paystack_charge(p):
         raise BusinessError("That MoMo payment has not been confirmed by Paystack.", code="paystack_unconfirmed")
     if charge.payment_id:
         raise BusinessError("That MoMo payment is already used on another sale.", code="paystack_used")
+    if charge.refunds.exists():
+        raise BusinessError("That MoMo payment was refunded to the customer.", code="paystack_refunded")
     if charge.amount != money(p["amount"]):
         raise BusinessError("The MoMo payment amount does not match.")
     return charge
@@ -200,9 +202,36 @@ def _reverse_customer_effects(sale, fraction, user, refund_method=None, refund_a
     customer.save(update_fields=["balance", "loyalty_points"])
 
 
+def _create_paystack_refund(user, sale, refund, approver):
+    """Saved here with the sale refund. The view sends it to Paystack after the transaction commits."""
+    from apps.payments import paystack
+    from apps.payments.models import PaystackCharge, PaystackRefund
+
+    if not paystack.enabled():
+        raise BusinessError("Paystack is not set up. Choose another way to refund.")
+    charges = list(PaystackCharge.objects.select_for_update().filter(payment__sale=sale).order_by("created_at"))
+    if not charges:
+        raise BusinessError("This sale was not paid through Paystack. Choose another way to refund.")
+    for charge in charges:
+        if charge.refundable_amount >= refund.amount:
+            refund.reference = paystack.new_refund_reference()
+            refund.save(update_fields=["reference"])
+            return PaystackRefund.objects.create(
+                reference=refund.reference, charge=charge, sale_refund=refund, amount=refund.amount,
+                reason=refund.reason, created_by=user, approved_by=approver,
+            )
+    most = max(charge.refundable_amount for charge in charges)
+    raise BusinessError(f"Only {most} can go back through a single Paystack payment. "
+                        "Refund fewer items, or choose another way to refund.", code="paystack_refund_limit")
+
+
 @transaction.atomic
-def create_refund(user, sale, lines, method, reason, restock=True, approval_pin=None, reference=""):
-    """lines: [{"line": sale_line_id, "quantity": n}]"""
+def create_refund(user, sale, lines, method, reason, restock=True, approval_pin=None, reference="",
+                  through_paystack=False):
+    """
+    lines: [{"line": sale_line_id, "quantity": n}]
+    With through_paystack, the caller must pass refund.paystack_refund to paystack.send_refund afterwards.
+    """
     approver = require_permission_or_approval(user, "refund", approval_pin, "Refunds need manager approval.")
     sale = Sale.objects.select_for_update().get(pk=sale.pk)
     if sale.status == Sale.Status.VOIDED:
@@ -213,6 +242,8 @@ def create_refund(user, sale, lines, method, reason, restock=True, approval_pin=
         raise BusinessError("Only sales to a customer can be refunded to their account.")
     if method == PaymentMethod.POINTS:
         raise BusinessError("Refund points sales in cash or to the customer's account.")
+    if through_paystack and method != PaymentMethod.MOMO:
+        raise BusinessError("Only Mobile Money can be refunded through Paystack.")
     shift = require_shift(user) if method == PaymentMethod.CASH else None
 
     refund = Refund.objects.create(
@@ -249,6 +280,8 @@ def create_refund(user, sale, lines, method, reason, restock=True, approval_pin=
         raise BusinessError("Choose at least one item to refund.")
     refund.amount, refund.tax_amount = total, tax_total
     refund.save(update_fields=["amount", "tax_amount"])
+    if through_paystack:
+        _create_paystack_refund(user, sale, refund, approver)
 
     all_back = all(sl.refunded_quantity >= sl.quantity for sl in sale_lines.values())
     sale.status = Sale.Status.REFUNDED if all_back else Sale.Status.PARTIALLY_REFUNDED
@@ -271,6 +304,9 @@ def void_sale(user, sale, reason, approval_pin=None):
         raise BusinessError("The shift for this sale is closed. Use a refund instead.")
     if not reason:
         raise BusinessError("Give a reason for voiding.")
+    if sale.payments.filter(paystack_charge__isnull=False).exists():
+        raise BusinessError("This sale was paid through Paystack. Use a refund so the money goes back to the customer.",
+                            code="paystack_void")
     for sl in sale.lines.select_related("variant"):
         if sl.track_stock:
             change_stock(sale.branch, sl.variant, sl.quantity, "void", user=user, reference=sale.invoice_number,

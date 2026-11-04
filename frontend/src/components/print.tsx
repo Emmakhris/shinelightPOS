@@ -122,6 +122,7 @@ export function RefundDoc({ refund, settings }: { refund: Refund; settings: Busi
       ))}
       <hr />
       <Row bold left={`Refunded (${METHOD_LABELS[refund.method]})`} right={money(refund.amount)} />
+      {refund.paystack && <div>Sent through Paystack to {refund.paystack.phone}. It can take up to 10 business days to arrive.</div>}
       <div>Reason: {refund.reason}</div>
     </div>
   )

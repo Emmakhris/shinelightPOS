@@ -10,6 +10,12 @@ from apps.inventory.services import change_stock
 from apps.shifts.services import open_shift
 
 
+@pytest.fixture(autouse=True)
+def fast_password_hashing(settings):
+    """Real password hashing is slow on purpose, and the tests create many users."""
+    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+
 @pytest.fixture
 def business(db):
     profile = BusinessProfile.get()

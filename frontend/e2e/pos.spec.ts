@@ -46,7 +46,8 @@ test('first-run setup creates the business and signs the owner in', async () => 
   await page.getByLabel('PIN', { exact: false }).fill('1234')
   await page.getByRole('button', { name: 'Finish setup' }).click()
 
-  await expect(page.getByRole('heading', { name: /Good (morning|afternoon|evening)/ })).toBeVisible()
+  // Hashing the password and PIN and loading the demo data can take a while on a busy PC.
+  await expect(page.getByRole('heading', { name: /Good (morning|afternoon|evening)/ })).toBeVisible({ timeout: 60_000 })
 })
 
 test('backups: the dashboard warns until a backup is made', async () => {
@@ -129,6 +130,21 @@ test('partial refund in cash puts stock back and marks the sale', async () => {
   await expect(dialog().getByText('1 refunded')).toBeVisible()
 })
 
+test('refund through Paystack sends the money back to the MoMo number', async () => {
+  await dialog().getByRole('button', { name: 'Refund…' }).click()
+  const refund = dialog()
+  await expect(refund.getByLabel('Refund by')).toHaveValue('paystack')
+  await expect(refund.getByText('0241234567')).toBeVisible()
+  await refund.getByRole('spinbutton').first().fill('1') // the other Coca-Cola
+  await refund.getByLabel('Reason').fill('Changed mind')
+  await refund.getByRole('button', { name: 'Refund', exact: true }).click()
+
+  await expect(dialog().getByText('Waiting on Paystack')).toBeVisible()
+  await dialog().getByRole('button', { name: 'Check status' }).click()
+  await expect(dialog().getByText('Sent back')).toBeVisible()
+  await expect(dialog().getByRole('button', { name: 'Check status' })).toHaveCount(0)
+})
+
 test('restaurant: open a table, send food to the kitchen, pay the bill', async () => {
   await page.goto('/tables')
   await page.getByRole('button', { name: /^T3\b/ }).click()
@@ -181,11 +197,12 @@ test('reports add up the day', async () => {
   const stat = (label: string) => page.getByText(label, { exact: true }).locator('..')
   await expect(stat('Gross sales')).toContainText('GH₵ 75.00')
   await expect(stat('Tax collected')).toContainText('GH₵ 12.50') // 20% inside tax-inclusive prices
-  await expect(stat('Refunds')).toContainText('GH₵ 8.00')
+  await expect(stat('Refunds')).toContainText('GH₵ 16.00')
 
   // Paystack reconciliation: the approved prompt is on sale 1, the declined one is listed as failed.
   await page.getByRole('button', { name: 'Payments', exact: true }).click()
-  await expect(page.getByRole('row', { name: /0241234567/ })).toContainText('INV-MAIN-000001')
+  await expect(page.getByRole('row', { name: /0241234567/ }).first()).toContainText('INV-MAIN-000001')
+  await expect(page.getByRole('row', { name: /Sent back/ })).toContainText('GH₵ 8.00')
   await expect(page.getByRole('row', { name: /0240000000/ })).toContainText('Failed')
   await expect(page.getByText(/paid but not on a sale/)).toHaveCount(0)
 

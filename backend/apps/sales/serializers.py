@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.payments.serializers import PaystackRefundSerializer
+
 from .models import HeldSale, MomoNetwork, Payment, PaymentMethod, Refund, RefundLine, Sale, SaleLine, SaleTax
 
 DISCOUNT_TYPES = ["amount", "percent"]
@@ -43,6 +45,7 @@ class RefundInput(serializers.Serializer):
     restock = serializers.BooleanField(default=True)
     reference = serializers.CharField(required=False, allow_blank=True, max_length=100)
     approval_pin = serializers.CharField(required=False, allow_blank=True)
+    through_paystack = serializers.BooleanField(default=False)
 
 
 class SaleLineSerializer(serializers.ModelSerializer):
@@ -60,10 +63,15 @@ class SaleTaxSerializer(serializers.ModelSerializer):
 
 class PaymentSerializer(serializers.ModelSerializer):
     method_label = serializers.CharField(source="get_method_display", read_only=True)
+    paystack = serializers.SerializerMethodField()
 
     class Meta:
         model = Payment
-        fields = ["id", "method", "method_label", "amount", "momo_network", "reference"]
+        fields = ["id", "method", "method_label", "amount", "momo_network", "reference", "paystack"]
+
+    def get_paystack(self, obj):
+        charge = getattr(obj, "paystack_charge", None)
+        return charge and {"phone": charge.phone, "refundable": str(charge.refundable_amount)}
 
 
 class RefundLineSerializer(serializers.ModelSerializer):
@@ -79,11 +87,12 @@ class RefundSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source="user.display_name", read_only=True)
     approved_by_name = serializers.CharField(source="approved_by.display_name", read_only=True, default=None)
     invoice_number = serializers.CharField(source="sale.invoice_number", read_only=True)
+    paystack = PaystackRefundSerializer(source="paystack_refund", read_only=True, default=None)
 
     class Meta:
         model = Refund
         fields = ["id", "number", "sale", "invoice_number", "method", "reference", "amount", "tax_amount", "reason",
-                  "restocked", "created_at", "user_name", "approved_by_name", "lines"]
+                  "restocked", "created_at", "user_name", "approved_by_name", "lines", "paystack"]
 
 
 class SaleListSerializer(serializers.ModelSerializer):

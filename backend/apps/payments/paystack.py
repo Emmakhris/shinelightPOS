@@ -8,6 +8,10 @@ server is reachable from the internet.
 
 Set PAYSTACK_SECRET_KEY in backend/.env. "sk_test_..." uses Paystack's test mode,
 "sk_live_..." takes real money, and "sk_fake" runs a built-in simulator for training and tests.
+
+Refunds: POST /refund with our own reference, then GET /refund?reference=... or the refund.* webhook.
+A reference can be used only once, so sending the same one again after a lost connection is safe
+(Paystack answers 409). A processed refund can still take up to 10 business days to reach the customer.
 """
 import hashlib
 import hmac
@@ -26,7 +30,7 @@ from apps.business.models import BusinessProfile
 from apps.common.exceptions import BusinessError
 from apps.common.money import money
 
-from .models import PAYSTACK_PROVIDERS, PaystackCharge
+from .models import PAYSTACK_PROVIDERS, PaystackCharge, PaystackRefund
 
 FAKE_KEY = "sk_fake"
 APPROVAL_WINDOW = timedelta(seconds=180)  # set by the networks
@@ -195,7 +199,143 @@ def valid_signature(raw_body, signature):
     return hmac.compare_digest(expected, signature)
 
 
+def new_refund_reference():
+    return f"SLR-{uuid.uuid4().hex[:20]}"
+
+
+def _apply_refund_status(refund, data):
+    S = PaystackRefund.Status
+    status = (data or {}).get("status")
+    if status not in (S.PENDING, S.PROCESSING, S.NEEDS_ATTENTION, S.PROCESSED, S.FAILED):
+        return refund
+    if refund.status == S.SETTLED or (refund.status in (S.PROCESSED, S.FAILED) and status not in (S.PROCESSED, S.FAILED)):
+        return refund  # a late webhook must not undo a final status
+    refund.raw = data
+    refund.status = status
+    refund.message = ""
+    amount = data.get("amount")
+    if amount is not None and money(Decimal(str(amount)) / 100) != refund.amount:
+        refund.status = S.NEEDS_ATTENTION
+        refund.message = f"Paystack shows {money(Decimal(str(amount)) / 100)} instead of {refund.amount}."
+    elif status == S.NEEDS_ATTENTION:
+        refund.message = "Paystack needs the customer's account details. Finish this refund in the Paystack dashboard."
+    elif status == S.FAILED:
+        refund.message = "The refund failed. The money is back in your Paystack balance."
+    return refund
+
+
+def send_refund(refund):
+    """Send a saved refund. Call this outside a database transaction: it waits on the network."""
+    charge = refund.charge
+    body = {
+        "transaction": charge.reference,
+        "amount": int(refund.amount * 100),  # pesewas
+        "currency": charge.currency,
+        "reference": refund.reference,
+        "customer_note": f"Refund from {BusinessProfile.get().name}"[:100],
+        "merchant_note": (refund.reason or "POS refund")[:100],
+    }
+    try:
+        resp = _call("POST", "/refund", body)
+    except PaystackError:
+        refund.message = "Could not reach Paystack. Check the status to send it again."
+        refund.save(update_fields=["message", "updated_at"])
+        return refund
+    http_status = resp.get("_http_status") or 200
+    if http_status == 409:  # already there from an earlier attempt
+        return check_refund(refund)
+    if resp.get("status") and resp.get("data"):
+        _apply_refund_status(refund, resp["data"])
+    elif http_status >= 500:
+        # It may or may not have gone through: stay "not sent" so the next check finds out.
+        refund.message = "Paystack had a problem. Check the status to send it again."
+    else:
+        refund.status = PaystackRefund.Status.FAILED
+        refund.message = (resp.get("message") or "Paystack refused the refund.")[:255]
+    refund.save()
+    return refund
+
+
+def check_refund(refund):
+    """Latest status from Paystack. A refund that never arrived there is sent now."""
+    S = PaystackRefund.Status
+    if refund.status in (S.PROCESSED, S.FAILED, S.SETTLED):
+        return refund
+    resp = _call("GET", f"/refund?reference={refund.reference}")
+    found = resp.get("data") if resp.get("status") else None
+    if found:
+        _apply_refund_status(refund, found[0])
+        refund.save()
+    elif refund.status == S.SENDING and resp.get("status"):
+        return send_refund(refund)
+    return refund
+
+
+def retry_refund(refund):
+    """Try a failed refund again. Paystack allows each reference once, so it gets a new one."""
+    with transaction.atomic():
+        refund = PaystackRefund.objects.select_for_update().get(pk=refund.pk)
+        if refund.status != PaystackRefund.Status.FAILED:
+            raise BusinessError("Only a failed refund can be tried again.")
+        refund.reference = new_refund_reference()
+        refund.status = PaystackRefund.Status.SENDING
+        refund.message = ""
+        refund.save()
+        if refund.sale_refund:
+            refund.sale_refund.reference = refund.reference
+            refund.sale_refund.save(update_fields=["reference"])
+    return send_refund(refund)
+
+
+def settle_refund(refund, note):
+    """The customer was paid some other way, so the refund no longer waits on Paystack."""
+    with transaction.atomic():
+        refund = PaystackRefund.objects.select_for_update().get(pk=refund.pk)
+        if refund.status != PaystackRefund.Status.FAILED:
+            raise BusinessError("Only a failed refund can be marked as paid by hand.")
+        refund.status = PaystackRefund.Status.SETTLED
+        refund.message = note[:255]
+        refund.save()
+    return refund
+
+
+def refund_unmatched_charge(user, charge, reason, approver=None):
+    """Create the refund for money received that never reached a sale. Send it with send_refund."""
+    with transaction.atomic():
+        charge = PaystackCharge.objects.select_for_update().get(pk=charge.pk)
+        if charge.status != PaystackCharge.Status.SUCCESS:
+            raise BusinessError("This payment was not completed, so there is nothing to refund.")
+        if charge.payment_id:
+            raise BusinessError("This payment is on a sale. Refund it from the sale.")
+        if charge.refunds.exists():
+            raise BusinessError("This payment already has a refund.")
+        return PaystackRefund.objects.create(
+            reference=new_refund_reference(), charge=charge, amount=charge.amount, reason=reason[:255],
+            created_by=user, approved_by=approver,
+        )
+
+
+def _handle_refund_webhook(data):
+    S = PaystackRefund.Status
+    with transaction.atomic():
+        refunds = PaystackRefund.objects.select_for_update()
+        refund = None
+        if data.get("refund_reference"):
+            refund = refunds.filter(reference=data["refund_reference"]).first()
+        elif data.get("transaction_reference"):
+            # Paystack can leave out the refund reference: use the open refund for this charge and amount.
+            amount = money(Decimal(str(data.get("amount") or 0)) / 100)
+            refund = refunds.filter(charge__reference=data["transaction_reference"], amount=amount).exclude(
+                status__in=[S.PROCESSED, S.FAILED, S.SETTLED]).order_by("created_at").first()
+        if refund is not None:
+            _apply_refund_status(refund, data)
+            refund.save()
+    return refund
+
+
 def handle_webhook(event):
+    if (event.get("event") or "").startswith("refund."):
+        return _handle_refund_webhook(event.get("data") or {})
     if event.get("event") != "charge.success":
         return None
     data = event.get("data") or {}
@@ -211,12 +351,31 @@ def handle_webhook(event):
 # ---------------------------------------------------------------------------------------------
 # Simulator (PAYSTACK_SECRET_KEY=sk_fake): no internet, no money. Numbers ending in 0000 are
 # declined, numbers ending in 1111 ask for the code 123456, everything else is approved on
-# the first status check.
+# the first status check. For refunds, a charge from a number ending in 2222 is refused when
+# sent, one ending in 3333 fails on the first check, and others are sent back on the first check.
 # ---------------------------------------------------------------------------------------------
 _FAKE = {}
 
 
+def _fake_refund_call(method, path, body):
+    if method == "POST":
+        charge = PaystackCharge.objects.filter(reference=body["transaction"]).first()
+        if charge is None or charge.phone.endswith("2222"):
+            return {"status": False, "message": "Your Paystack balance is too low for this refund", "_http_status": 400}
+        return {"status": True, "message": "Refund has been queued for processing",
+                "data": {"status": "pending", "amount": body["amount"], "reference": body["reference"]}}
+    reference = path.split("reference=", 1)[1]
+    refund = PaystackRefund.objects.select_related("charge").filter(reference=reference).first()
+    if refund is None or refund.status == PaystackRefund.Status.SENDING:
+        return {"status": True, "message": "Refunds retrieved", "data": []}
+    status = "failed" if refund.charge.phone.endswith("3333") else "processed"
+    return {"status": True, "message": "Refunds retrieved",
+            "data": [{"status": status, "amount": int(refund.amount * 100), "reference": reference}]}
+
+
 def _fake_call(method, path, body):
+    if path.startswith("/refund"):
+        return _fake_refund_call(method, path, body)
     if method == "POST" and path == "/charge":
         phone = body["mobile_money"]["phone"]
         ref = body["reference"]

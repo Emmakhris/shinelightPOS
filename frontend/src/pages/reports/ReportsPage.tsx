@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, downloadCsv, qs } from '../../api/client'
-import type { PaystackCharge, ShiftReport } from '../../api/types'
+import type { PaystackCharge, PaystackRefund, ShiftReport } from '../../api/types'
+import { isCancelled, withApproval } from '../../components/approval'
+import { PaystackRefundActions } from '../../components/PaystackRefundActions'
 import { ShiftReportDoc, printDoc } from '../../components/print'
 import { toast } from '../../components/toast'
 import { Badge, Button, Empty, Field, Loading, PageHeader, Stat, Tabs } from '../../components/ui'
@@ -236,14 +238,35 @@ function PaystackPayments({ params }: { params: string }) {
       toast.error(err)
     }
   }
-  const unmatched = (charges.data ?? []).filter((c) => c.status === 'success' && !c.invoice_number)
+  const refunds = useQuery({
+    queryKey: ['report', 'paystack-refunds', params],
+    queryFn: () => api.get<PaystackRefund[]>(`/payments/refunds/${params}`),
+  })
+  const refresh = () => {
+    charges.refetch()
+    refunds.refetch()
+  }
+  const sendBack = async (c: PaystackCharge) => {
+    const reason = window.prompt(`Why is ${money(c.amount)} going back to ${c.phone}?`)
+    if (!reason) return
+    try {
+      const refund = await withApproval((pin) => api.post<PaystackRefund>(`/payments/momo/${c.reference}/refund/`, { reason, approval_pin: pin }))
+      if (refund.status === 'failed' || refund.status === 'sending') toast.error(refund.message)
+      else toast.success(`Sending ${money(c.amount)} back to ${c.phone}`)
+      refresh()
+    } catch (err) {
+      if (!isCancelled(err)) toast.error(err)
+    }
+  }
+  const unmatched = (charges.data ?? []).filter((c) => c.status === 'success' && !c.invoice_number && c.refunds.length === 0)
   return (
+    <>
     <div className="card overflow-x-auto">
       <div className="flex flex-wrap items-center justify-between gap-2 p-3">
         <h3 className="font-bold">Paystack MoMo prompts</h3>
         {unmatched.length > 0 && (
           <span className="rounded bg-red-50 px-2 py-1 text-sm font-semibold text-red-700">
-            {unmatched.length} paid but not on a sale ({money(unmatched.reduce((s, c) => s + toNumber(c.amount), 0))}). Refund the customer or record the sale.
+            {unmatched.length} paid but not on a sale ({money(unmatched.reduce((s, c) => s + toNumber(c.amount), 0))}). Send the money back or record the sale.
           </span>
         )}
       </div>
@@ -260,15 +283,38 @@ function PaystackPayments({ params }: { params: string }) {
                 <Badge color={c.status === 'success' ? 'green' : c.status === 'failed' ? 'red' : 'amber'}>{c.status_label}</Badge>
                 {c.message && c.status !== 'success' && <div className="text-xs text-slate-500">{c.message}</div>}
               </td>
-              <td>{c.invoice_number ?? (c.status === 'success' ? <Badge color="red">Not on a sale</Badge> : '')}</td>
+              <td>{c.invoice_number ?? (c.refunds.length > 0 ? <Badge color="gray">Refunded</Badge> : c.status === 'success' ? <Badge color="red">Not on a sale</Badge> : '')}</td>
               <td>{c.created_by_name}</td>
-              <td className="text-right">{c.status !== 'success' && <Button size="sm" variant="ghost" onClick={() => recheck(c.reference)}>Recheck</Button>}</td>
+              <td className="text-right">
+                {c.status !== 'success' && <Button size="sm" variant="ghost" onClick={() => recheck(c.reference)}>Recheck</Button>}
+                {c.status === 'success' && !c.invoice_number && c.refunds.length === 0 && <Button size="sm" variant="secondary" onClick={() => sendBack(c)}>Send back</Button>}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
       {charges.data?.length === 0 && <Empty>No Paystack MoMo prompts in this period.</Empty>}
     </div>
+    <div className="card overflow-x-auto">
+      <h3 className="p-3 font-bold">Paystack refunds</h3>
+      <table className="table">
+        <thead><tr><th>When</th><th>Refund</th><th>Sale</th><th>Phone</th><th className="text-right">Amount</th><th>Status</th></tr></thead>
+        <tbody>
+          {refunds.data?.map((r) => (
+            <tr key={r.reference}>
+              <td className="whitespace-nowrap">{dateTime(r.created_at)}</td>
+              <td>{r.refund_number ?? r.reason}</td>
+              <td>{r.invoice_number ?? 'Not on a sale'}</td>
+              <td>{r.phone}</td>
+              <td className="text-right">{money(r.amount)}</td>
+              <td><PaystackRefundActions refund={r} onChange={refresh} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {refunds.data?.length === 0 && <Empty>No Paystack refunds in this period.</Empty>}
+    </div>
+    </>
   )
 }
 

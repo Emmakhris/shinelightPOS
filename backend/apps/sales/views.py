@@ -6,6 +6,8 @@ from apps.accounts.permissions import HasPerm
 from apps.common.csvexport import csv_response, wants_csv
 
 from . import services
+from apps.payments import paystack
+
 from .models import HeldSale, Refund, Sale
 from .serializers import (
     CheckoutInput, HeldSaleSerializer, QuoteInput, RefundInput, RefundSerializer, SaleDetailSerializer,
@@ -72,8 +74,11 @@ class SaleViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
         d = s.validated_data
         refund = services.create_refund(
             request.user, sale, d["lines"], d["method"], d["reason"], d["restock"], d.get("approval_pin"),
-            d.get("reference", ""),
+            d.get("reference", ""), d["through_paystack"],
         )
+        if d["through_paystack"]:
+            # The refund is committed, so the wallet is only paid for a refund that is on record.
+            paystack.send_refund(refund.paystack_refund)
         return Response(RefundSerializer(refund).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])
