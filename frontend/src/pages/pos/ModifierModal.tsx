@@ -53,7 +53,7 @@ export function ModifierModal({ item, onClose, onConfirm }: {
             <div className="mb-2 text-sm font-bold">
               {g.name}{' '}
               <span className="font-normal text-slate-500">
-                {g.min_select ? `(choose ${g.max_select === 1 ? 'one' : `at least ${g.min_select}`})` : g.max_select === 1 ? '(optional, one)' : '(optional)'}
+                {g.min_select ? `(choose ${g.max_select === 1 ? 'one' : `at least ${g.min_select}`})` : g.max_select === 1 ? '(optional, one)' : g.max_select ? `(optional, up to ${g.max_select})` : '(optional)'}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-2">

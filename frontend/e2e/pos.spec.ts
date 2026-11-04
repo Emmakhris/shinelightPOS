@@ -78,6 +78,10 @@ test('retail sale: scan, add options, Paystack MoMo prompt plus cash, give chang
   await scan.fill('Jollof')
   await page.getByRole('button', { name: /Jollof Rice/ }).click()
   await dialog().getByRole('button', { name: /Chicken/ }).click()
+  // A dish can have more than one protein; pressing one again takes it off.
+  await dialog().getByRole('button', { name: /Egg/ }).click()
+  await expect(dialog().getByRole('button', { name: 'Add GH₵ 32.00' })).toBeVisible()
+  await dialog().getByRole('button', { name: /Egg/ }).click()
   await dialog().getByRole('button', { name: /Shito/ }).click()
   await dialog().getByRole('button', { name: 'Add GH₵ 29.00' }).click()
 

@@ -212,3 +212,17 @@ def test_modifiers_are_priced_and_validated(cashier_api, cashier_shift, business
     assert two.status_code == 400
     ok = sell(cashier_api, [{"variant": jollof.pk, "quantity": 1, "modifiers": [chicken.pk]}], pay)
     assert ok.status_code == 201 and ok.data["total"] == "27.00"
+
+
+def test_demo_dish_can_have_several_proteins(cashier_api, cashier_shift, business):
+    from apps.business.demo import load_demo_data
+    from apps.catalog.models import Modifier, Variant
+
+    load_demo_data()
+    jollof = Variant.objects.get(product__name="Jollof Rice")
+    proteins = Modifier.objects.filter(group__name="Protein", name__in=["Chicken", "Fish", "Egg"])
+    r = sell(cashier_api, [{"variant": jollof.pk, "quantity": 1, "modifiers": [m.pk for m in proteins]}],
+             [{"method": "cash", "amount": "60"}])
+    assert r.status_code == 201, r.data
+    assert r.data["total"] == "52.00"  # 12.00 + 15.00 + 20.00 + 5.00
+    assert len(r.data["lines"][0]["modifiers"]) == 3

@@ -53,7 +53,7 @@ def load_demo_data():
     shirt.category = Category.objects.get_or_create(name="Clothing", defaults={"color": "#e11d48"})[0]
     shirt.save()
 
-    protein = ModifierGroup.objects.create(name="Protein", min_select=0, max_select=1)
+    protein = ModifierGroup.objects.create(name="Protein", min_select=0, max_select=0)
     for name, price in [("Chicken", "15.00"), ("Fish", "20.00"), ("Egg", "5.00"), ("Beef", "18.00")]:
         Modifier.objects.create(group=protein, name=name, price=price)
     extras = ModifierGroup.objects.create(name="Extras", min_select=0, max_select=0, sort_order=1)
