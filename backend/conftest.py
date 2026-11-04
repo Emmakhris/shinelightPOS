@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+from django.core.cache import cache
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
@@ -14,6 +15,12 @@ from apps.shifts.services import open_shift
 def fast_password_hashing(settings):
     """Real password hashing is slow on purpose, and the tests create many users."""
     settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+
+@pytest.fixture(autouse=True)
+def clear_cache():
+    """Wrong-PIN counts and login throttles live in the cache and must not carry between tests."""
+    cache.clear()
 
 
 @pytest.fixture

@@ -27,7 +27,7 @@ A point-of-sale system for Ghanaian retail shops and restaurants. It is installe
   - Sales, profit and margin by day and hour, product, category, staff and payment method (including MoMo by network).
   - A tax report for VAT returns, stock valuation and an end-of-day report.
   - CSV export for each report.
-- **Staff:** roles (owner, manager, cashier, waiter), quick PIN sign-in, the till lock screen, and an audit log.
+- **Staff:** roles (owner, manager, cashier, waiter), quick PIN sign-in with a lockout after 5 wrong PINs, the till lock screen, and an audit log.
 - **Setup and admin:** a first-run setup wizard with optional demo data, the Django admin at `/admin/`, and a backup script.
 
 > **Tax rates:** the defaults are VAT 15%, NHIL 2.5% and GETFund 2.5%, all charged on the item value. Ghana's levy rules have changed several times, so confirm the current rates and whether any tax compounds with GRA or your accountant, then adjust them in **Settings → Taxes**.

@@ -10,7 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import AuditLog, Role, User
 from .permissions import HasPerm
 from .serializers import AuditLogSerializer, UserChoiceSerializer, UserSerializer
-from .services import audit, find_approver
+from .services import PIN_LOCK_SECONDS, approver_for, audit, limit_pin_tries
 
 
 class LoginThrottle(ScopedRateThrottle):
@@ -50,7 +50,11 @@ def login(request):
 def pin_login(request):
     """Quick cashier switch on a shared till: pick your name, type your PIN."""
     user = User.objects.filter(pk=request.data.get("user_id"), is_active=True).first()
-    if user is None or not user.check_pin(request.data.get("pin")):
+    pin = request.data.get("pin")
+    if user is None or not pin or not limit_pin_tries(
+        "sign_in", user, lambda: user.check_pin(pin),
+        f"Too many wrong PINs. Try again in up to {PIN_LOCK_SECONDS // 60} minutes, or sign in with your password.",
+    ):
         return Response({"detail": "Wrong PIN."}, status=status.HTTP_401_UNAUTHORIZED)
     audit("pin_login", user=user)
     return Response(_tokens_for(user, request))
@@ -73,7 +77,7 @@ def me(request):
 @permission_classes([IsAuthenticated])
 def verify_approval(request):
     """Let the till check a manager PIN before sending the real request."""
-    approver = find_approver(request.data.get("pin"))
+    approver = approver_for(request.user, request.data.get("pin"))
     perm = request.data.get("permission")
     if approver is None or (perm and not approver.has_pos_perm(perm)):
         return Response({"detail": "PIN not accepted."}, status=status.HTTP_403_FORBIDDEN)

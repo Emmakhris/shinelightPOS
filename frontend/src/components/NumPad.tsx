@@ -1,10 +1,12 @@
 import { Button } from './ui'
 
 /** Touch-friendly keypad that edits a numeric string. */
-export function NumPad({ value, onChange, allowDecimal = true, onEnter }: {
+export function NumPad({ value, onChange, allowDecimal = true, keepLeadingZeros = false, onEnter }: {
   value: string
   onChange: (v: string) => void
   allowDecimal?: boolean
+  /** For PINs, where 0123 is not the same as 123. */
+  keepLeadingZeros?: boolean
   onEnter?: () => void
 }) {
   const press = (key: string) => {
@@ -16,7 +18,7 @@ export function NumPad({ value, onChange, allowDecimal = true, onEnter }: {
     }
     const [, decimals] = value.split('.')
     if (decimals !== undefined && decimals.length >= 2) return
-    onChange(value === '0' ? key : value + key)
+    onChange(value === '0' && !keepLeadingZeros ? key : value + key)
   }
   const keys = ['7', '8', '9', '4', '5', '6', '1', '2', '3', allowDecimal ? '.' : 'C', '0', '⌫']
   return (

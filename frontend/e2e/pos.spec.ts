@@ -209,3 +209,20 @@ test('reports add up the day', async () => {
   await page.getByRole('button', { name: 'Tax (GRA)' }).click()
   await expect(page.getByRole('row', { name: /VAT/ })).toContainText('GH₵ 9.38')
 })
+
+test('too many wrong PINs on the lock screen lock that person out', async () => {
+  await page.getByRole('button', { name: /Lock/ }).click()
+  await expect(page.getByText('Till locked')).toBeVisible()
+  await page.getByRole('button', { name: /Ama/ }).click()
+  for (let i = 0; i < 5; i++) {
+    for (const d of '0000') await page.getByRole('button', { name: d, exact: true }).click()
+    await page.getByRole('button', { name: 'Enter', exact: true }).click()
+    await expect(page.getByText(i < 4 ? 'Wrong PIN.' : /Too many wrong PINs.*sign in with your password/)).toBeVisible()
+    await expect(page.getByText('Checking…')).toHaveCount(0)
+  }
+  // The right PIN is refused too until the lockout ends.
+  for (const d of '1234') await page.getByRole('button', { name: d, exact: true }).click()
+  await page.getByRole('button', { name: 'Enter', exact: true }).click()
+  await expect(page.getByText(/Too many wrong PINs/)).toBeVisible()
+  await expect(page.getByText('Till locked')).toBeVisible()
+})

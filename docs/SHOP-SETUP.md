@@ -42,6 +42,11 @@ The tills reach the POS through the shop PC's address. If the router hands the P
 3. Bookmark it, or use *Install app / Add to home screen* so it opens full-screen.
 4. Each cashier signs in with their PIN. Press **Lock** when leaving the till.
 
+**Wrong PINs:** after 5 wrong PINs in a row, that person is locked out of PIN use for 15 minutes, and the lockout is recorded in the activity log.
+- **Locked out of PIN sign-in:** sign in with your username and password instead.
+- **A cashier locked out of manager approval:** a manager can sign in at that till and do the action themselves. Other tills are not affected.
+- **Check the activity log:** several lockouts for approvals can mean someone is guessing a manager's PIN. If so, change that PIN.
+
 If a till cannot connect, check that the shop PC is on, then open `http://<address>:8000/api/health/` on the till. It should show `"ok": true`.
 
 ## 4. Backups: please read

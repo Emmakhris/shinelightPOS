@@ -1,8 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor
 
-from apps.common.exceptions import ApprovalRequired
+from django.core.cache import cache
+
+from apps.common.exceptions import ApprovalRequired, PinLocked
 
 from .models import AuditLog, User
+
+PIN_MAX_TRIES = 5
+PIN_LOCK_SECONDS = 15 * 60
 
 
 def audit(action, user=None, entity="", entity_id="", approved_by=None, **details):
@@ -29,6 +34,40 @@ def find_approver(pin):
         return next((user for user, matched in zip(candidates, matches) if matched), None)
 
 
+def limit_pin_tries(kind, user, check, locked_message):
+    """
+    Run a PIN check, allowing PIN_MAX_TRIES wrong PINs for this user before a PIN_LOCK_SECONDS lockout.
+    A try is counted before checking, so many requests at once cannot get past the limit. The count
+    is kept in the cache, not the database, so a sale's rollback cannot erase it. It lives in the
+    server process, and restarting the POS clears it.
+    """
+    key = f"pin-tries:{kind}:{user.pk}"
+    cache.add(key, 0, PIN_LOCK_SECONDS)
+    tries = cache.incr(key)
+    if tries > PIN_MAX_TRIES:
+        raise PinLocked(locked_message)
+    result = check()
+    if result:
+        cache.delete(key)
+        return result
+    if tries == PIN_MAX_TRIES:
+        cache.set(key, tries, PIN_LOCK_SECONDS)  # the lockout runs from the last wrong PIN
+        raise PinLocked(locked_message, after_rollback=lambda: audit(
+            "pin_locked", user, "user", user.pk, kind=kind, minutes=PIN_LOCK_SECONDS // 60))
+    return result
+
+
+def approver_for(user, pin):
+    """The manager whose PIN this user entered, with the limit on wrong PINs applied."""
+    if not pin:
+        return None
+    return limit_pin_tries(
+        "approval", user, lambda: find_approver(pin),
+        f"Too many wrong PINs. Try again in up to {PIN_LOCK_SECONDS // 60} minutes, "
+        "or ask a manager to sign in at this till.",
+    )
+
+
 def require_permission_or_approval(user, perm, approval_pin=None, message=None):
     """
     Let the action go ahead if the user holds the permission, otherwise a manager must
@@ -36,7 +75,7 @@ def require_permission_or_approval(user, perm, approval_pin=None, message=None):
     """
     if user.has_pos_perm(perm):
         return None
-    approver = find_approver(approval_pin)
+    approver = approver_for(user, approval_pin)
     if approver is None or not approver.has_pos_perm(perm):
         raise ApprovalRequired(message or "Manager approval required.")
     return approver

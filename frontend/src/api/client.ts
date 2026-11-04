@@ -79,7 +79,9 @@ async function request<T>(method: string, url: string, body?: Body, retry = true
     headers,
     body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
   })
-  if (res.status === 401 && retry && tokens.refresh) {
+  // On a sign-in, 401 means a wrong password or PIN. Sending it again would count as a second wrong try.
+  const isSignIn = url === '/auth/login/' || url === '/auth/pin-login/'
+  if (res.status === 401 && retry && tokens.refresh && !isSignIn) {
     if (await refreshAccess()) return request<T>(method, url, body, false)
     tokens.clear()
     onUnauthorized()

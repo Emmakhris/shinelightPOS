@@ -93,7 +93,7 @@ export function ApprovalDialog() {
         onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
       />
-      <NumPad value={pin} onChange={(v) => setPin(v.slice(0, 6))} allowDecimal={false} />
+      <NumPad value={pin} onChange={(v) => setPin(v.slice(0, 6))} allowDecimal={false} keepLeadingZeros />
       <Button className="mt-3 w-full" size="lg" onClick={submit} disabled={!pin}>
         Approve
       </Button>

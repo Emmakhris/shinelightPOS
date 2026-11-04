@@ -83,6 +83,7 @@ function PinPad({ onDone }: { onDone?: () => void }) {
       <NumPad
         value={pin}
         allowDecimal={false}
+        keepLeadingZeros
         onChange={(v) => setPin(v.slice(0, 6))}
         onEnter={() => submit()}
       />
