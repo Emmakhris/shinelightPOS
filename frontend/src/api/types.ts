@@ -44,6 +44,28 @@ export interface BusinessSettings {
   setup_complete: boolean
   /** null = Paystack not set up; "simulated" = built-in simulator (sk_fake). */
   paystack_mode: 'live' | 'test' | 'simulated' | null
+  evat_enabled: boolean
+}
+
+export interface EvatSubmission {
+  id: number
+  kind: 'invoice' | 'refund' | 'void'
+  kind_label: string
+  number: string
+  status: 'pending' | 'accepted' | 'rejected'
+  status_label: string
+  simulated: boolean
+  reference: string
+  message: string
+  attempts: number
+  created_at: string
+  sent_at: string | null
+}
+
+export interface EvatOverview {
+  mode: 'simulated' | 'test' | 'live'
+  counts: Record<EvatSubmission['status'], number>
+  submissions: EvatSubmission[]
 }
 
 export interface PaystackCharge {
@@ -303,6 +325,8 @@ export interface Sale extends SaleSummary {
   taxes: { code: string; name: string; rate: string; amount: string }[]
   payments: Payment[]
   refunds: Refund[]
+  evat_status: '' | 'pending' | 'accepted' | 'rejected'
+  evat_reference: string
 }
 
 export interface HeldSale {

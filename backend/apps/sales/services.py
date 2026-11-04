@@ -10,6 +10,7 @@ from apps.business.tax import active_rates
 from apps.common.exceptions import BusinessError
 from apps.common.money import ZERO, D, money
 from apps.customers.models import Customer, CustomerTransaction
+from apps.evat import services as evat
 from apps.inventory.services import change_stock
 from apps.shifts.services import require_shift
 
@@ -174,6 +175,7 @@ def create_sale(user, data, order_type=OrderType.RETAIL, table_name=""):
 
     sale.cost_total = cost_total
     sale.save(update_fields=["cost_total", "points_earned"])
+    evat.queue_invoice(sale)
     if approver:
         audit("sale_approved", user, "sale", sale.pk, approved_by=approver, invoice=sale.invoice_number,
               discount=str(cart.discount_total), price_override=any(p.price_overridden for p in cart.lines))
@@ -290,6 +292,7 @@ def create_refund(user, sale, lines, method, reason, restock=True, approval_pin=
     _reverse_customer_effects(sale, fraction, user, method, total)
     audit("refund", user, "sale", sale.pk, approved_by=approver, refund=refund.number, amount=str(total),
           method=method, reason=reason)
+    evat.queue_refund(refund)
     return refund
 
 
@@ -338,4 +341,5 @@ def void_sale(user, sale, reason, approval_pin=None):
     sale.save(update_fields=["status", "voided_at", "voided_by", "void_reason"])
     audit("sale_voided", user, "sale", sale.pk, approved_by=approver, invoice=sale.invoice_number,
           total=str(sale.total), reason=reason)
+    evat.queue_void(sale)
     return sale

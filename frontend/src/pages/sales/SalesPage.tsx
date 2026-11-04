@@ -148,6 +148,7 @@ export function SaleDetailModal({ id, onClose }: { id: number; onClose: () => vo
             <Info label="Cashier" value={s.cashier_name} />
             <Info label="Customer" value={s.customer_name ?? 'Walk-in'} />
             <Info label="Status" value={<Badge color={STATUS_COLORS[s.status]}>{s.status_label}</Badge>} />
+            {s.evat_status && <Info label="E-VAT" value={s.evat_status === 'accepted' ? s.evat_reference : <Badge color={s.evat_status === 'rejected' ? 'red' : 'amber'}>{s.evat_status === 'rejected' ? 'Rejected' : 'Not sent yet'}</Badge>} />}
           </div>
           {s.status === 'voided' && <p className="rounded bg-red-50 p-2 text-sm text-red-700">Voided by {s.voided_by_name} on {dateTime(s.voided_at)}: {s.void_reason}</p>}
           <table className="table">

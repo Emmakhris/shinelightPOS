@@ -75,6 +75,12 @@ When Paystack is set up, choosing **Mobile Money** at the till sends a payment p
 
 **Training:** `PAYSTACK_SECRET_KEY=sk_fake` runs a built-in simulator that moves no money. Numbers ending in `0000` are declined, numbers ending in `1111` ask for the code `123456`, and all other numbers are approved. For refunds, a payment from a number ending in `2222` is refused when sent, one ending in `3333` fails on the first status check, and all others are sent back on the first status check.
 
+## GRA E-VAT (optional)
+
+E-VAT is off by default. Turn it on in **Settings → E-VAT** if GRA requires it for your business. Each new sale, refund and void is then queued and reported, and a sale still goes through if GRA can't be reached. Anything not accepted is listed there with a button to send it again.
+
+**The connection to GRA isn't built yet.** GRA gives its technical documents and test access to each taxpayer during onboarding and signs off the integration before go-live, so for now a simulator answers instead. Nothing goes to GRA, and receipts print `E-VAT TRAINING: NOT A GRA INVOICE`, so don't use this mode as compliance. Once you have GRA's documents, the remaining work is in `backend/apps/evat/connector.py`, plus the QR code and any other fields GRA requires on receipts.
+
 ## Development
 
 ```powershell
@@ -118,7 +124,7 @@ scripts/   setup, run, dev and backup scripts (PowerShell)
 
 ## Roadmap
 - **Phase 2:**
-  - Payments and invoicing: ~~Paystack MoMo prompts and refunds~~ (done), card payments through Paystack Terminal, GRA E-VAT submission, and SMS/WhatsApp receipts.
+  - Payments and invoicing: ~~Paystack MoMo prompts and refunds~~ (done), card payments through Paystack Terminal, the real connection to GRA E-VAT, and SMS/WhatsApp receipts.
   - Restaurant: a kitchen display screen, split bills by item or seat, tips, and recipes that deduct ingredients.
   - Promotions and gift cards.
   - Multi-branch stock transfers.

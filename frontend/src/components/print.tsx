@@ -98,6 +98,9 @@ export function ReceiptDoc({ sale, settings, copy }: { sale: Sale; settings: Bus
       {Number(sale.change_due) > 0 && <Row bold left="Change" right={money(sale.change_due, false)} />}
       {sale.customer_name && Number(sale.points_earned) > 0 && <Row left="Points earned" right={sale.points_earned} />}
       {sale.status === 'voided' && <div className="center big">*** VOIDED ***</div>}
+      {sale.evat_reference && <Row left="E-VAT" right={sale.evat_reference} />}
+      {sale.evat_reference.startsWith('SIM-') && <div className="center">E-VAT TRAINING: NOT A GRA INVOICE</div>}
+      {sale.evat_status && sale.evat_status !== 'accepted' && <div className="center">E-VAT: not yet accepted by GRA</div>}
       <hr />
       {settings.receipt_footer && <div className="center" style={{ whiteSpace: 'pre-line' }}>{settings.receipt_footer}</div>}
       <div className="center" style={{ fontSize: 10, marginTop: 4 }}>Powered by ShineLight POS</div>

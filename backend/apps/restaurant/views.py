@@ -11,6 +11,7 @@ from apps.business.models import Branch
 from apps.catalog.models import Variant
 from apps.common.exceptions import BusinessError
 from apps.common.money import D
+from apps.evat import services as evat
 from apps.sales import services as sales_services
 from apps.sales.models import OrderType
 from apps.sales.serializers import CheckoutInput, SaleDetailSerializer
@@ -232,6 +233,7 @@ class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Crea
             order.sale = sale
             order.closed_at = timezone.now()
             order.save(update_fields=["status", "sale", "closed_at"])
+        evat.send_for(sale)
         return Response(SaleDetailSerializer(sale).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])

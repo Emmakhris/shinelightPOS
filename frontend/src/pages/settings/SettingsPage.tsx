@@ -1,13 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../../api/client'
-import type { BusinessSettings, FloorArea, Table, TaxRate } from '../../api/types'
+import type { BusinessSettings, EvatOverview, FloorArea, Table, TaxRate } from '../../api/types'
 import { toast } from '../../components/toast'
-import { Button, Field, Loading, Modal, PageHeader, Tabs, Toggle } from '../../components/ui'
+import { Badge, Button, Empty, Field, Loading, Modal, PageHeader, Tabs, Toggle } from '../../components/ui'
 import { useSettings } from '../../lib/hooks'
 import { useAuth } from '../../stores/auth'
 
-type Tab = 'business' | 'selling' | 'receipt' | 'taxes' | 'tables' | 'backups'
+type Tab = 'business' | 'selling' | 'receipt' | 'taxes' | 'evat' | 'tables' | 'backups'
 
 export function SettingsPage() {
   const can = useAuth((s) => s.can)
@@ -20,6 +20,7 @@ export function SettingsPage() {
           { value: 'selling' as const, label: 'Selling & loyalty' },
           { value: 'receipt' as const, label: 'Receipt' },
           { value: 'taxes' as const, label: 'Taxes' },
+          { value: 'evat' as const, label: 'E-VAT' },
         ]
       : []),
     { value: 'tables', label: 'Tables' },
@@ -33,8 +34,78 @@ export function SettingsPage() {
       {tab === 'selling' && <SettingsForm fields="selling" />}
       {tab === 'receipt' && <SettingsForm fields="receipt" />}
       {tab === 'taxes' && <Taxes />}
+      {tab === 'evat' && <Evat />}
       {tab === 'tables' && <Tables />}
       {tab === 'backups' && <Backups />}
+    </div>
+  )
+}
+
+function Evat() {
+  const qc = useQueryClient()
+  const settings = useSettings().data
+  const overview = useQuery({ queryKey: ['evat'], queryFn: () => api.get<EvatOverview>('/evat/') })
+  const [busy, setBusy] = useState(false)
+  const run = async (action: () => Promise<unknown>) => {
+    setBusy(true)
+    try {
+      await action()
+      qc.invalidateQueries({ queryKey: ['settings'] })
+      qc.invalidateQueries({ queryKey: ['evat'] })
+    } catch (err) {
+      toast.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const data = overview.data
+  const waiting = data ? data.counts.pending + data.counts.rejected : 0
+  return (
+    <div className="max-w-3xl space-y-3">
+      <div className="card p-4">
+        <Toggle
+          checked={!!settings?.evat_enabled}
+          onChange={(on) => run(() => api.patch('/settings/', { evat_enabled: on }))}
+          label="Report sales to GRA E-VAT"
+          hint="Off by default. When on, each new sale, refund and void is reported. Sales made before it was on are not sent."
+        />
+      </div>
+      {data?.mode === 'simulated' && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <b>Training mode: nothing goes to GRA.</b> The connection to GRA is not set up yet, so a built-in simulator answers instead,
+          and receipts say they are not GRA invoices. GRA gives its technical documents and test access during onboarding, and they are needed to finish the connection.
+        </div>
+      )}
+      {overview.isLoading || !data ? <Loading /> : (
+        <>
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span><b>{data.counts.accepted}</b> accepted</span>
+            <span><b>{data.counts.pending}</b> not sent yet</span>
+            <span><b>{data.counts.rejected}</b> rejected</span>
+            {waiting > 0 && <Button size="sm" className="ml-auto" loading={busy} onClick={() => run(() => api.post('/evat/send/'))}>Send {waiting} again</Button>}
+          </div>
+          <div className="card overflow-x-auto">
+            <table className="table">
+              <thead><tr><th>Document</th><th>Type</th><th>Status</th><th>E-VAT reference</th><th>Date</th></tr></thead>
+              <tbody>
+                {data.submissions.map((s) => (
+                  <tr key={s.id}>
+                    <td className="font-mono text-xs">{s.number}</td>
+                    <td>{s.kind_label}</td>
+                    <td>
+                      <Badge color={s.status === 'accepted' ? 'green' : s.status === 'rejected' ? 'red' : 'amber'}>{s.status_label}</Badge>
+                      {s.message && <div className="text-xs text-slate-500">{s.message}</div>}
+                    </td>
+                    <td className="font-mono text-xs">{s.reference}</td>
+                    <td className="whitespace-nowrap">{new Date(s.created_at).toLocaleString('en-GB')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {data.submissions.length === 0 && <Empty>Nothing has been reported yet.</Empty>}
+          </div>
+        </>
+      )}
     </div>
   )
 }

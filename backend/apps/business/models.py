@@ -41,6 +41,7 @@ class BusinessProfile(models.Model):
     receipt_footer = models.TextField(blank=True, default="Thank you for your patronage!")
     receipt_width = models.PositiveSmallIntegerField(default=80, choices=[(80, "80 mm"), (58, "58 mm")])
     show_tax_on_receipt = models.BooleanField(default=True)
+    evat_enabled = models.BooleanField(default=False, help_text="Report sales, refunds and voids to GRA E-VAT.")
 
     setup_complete = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)

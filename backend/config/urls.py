@@ -31,6 +31,7 @@ api_patterns = [
     path("restaurant/", include("apps.restaurant.urls")),
     path("reports/", include("apps.reports.urls")),
     path("payments/", include("apps.payments.urls")),
+    path("evat/", include("apps.evat.urls")),
 ]
 
 urlpatterns = [

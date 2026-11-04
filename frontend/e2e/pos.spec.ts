@@ -62,6 +62,16 @@ test('backups: the dashboard warns until a backup is made', async () => {
   await expect(page.getByText('No backup has been made yet.')).toHaveCount(0)
 })
 
+test('E-VAT can be switched on, and says plainly that training mode is not GRA', async () => {
+  await page.goto('/settings')
+  await page.getByRole('button', { name: 'E-VAT', exact: true }).click()
+  const toggle = page.getByLabel('Report sales to GRA E-VAT')
+  await expect(toggle).not.toBeChecked()
+  await expect(page.getByText('Training mode: nothing goes to GRA.')).toBeVisible()
+  await toggle.click() // the box ticks once the server has saved it
+  await expect(toggle).toBeChecked()
+})
+
 test('retail sale: scan, add options, Paystack MoMo prompt plus cash, give change', async () => {
   await page.goto('/pos')
   await page.getByRole('button', { name: 'Open shift to start selling' }).click()
@@ -114,6 +124,8 @@ test('retail sale: scan, add options, Paystack MoMo prompt plus cash, give chang
   await expect(dialog().getByText('GH₵ 25.00')).toBeVisible() // change
   await dialog().getByRole('button', { name: '🖨 Print receipt' }).click()
   await expect.poll(printed).toContain('TAX INVOICE')
+  expect(await printed()).toContain('SIM-INV-MAIN-000001')
+  expect(await printed()).toContain('NOT A GRA INVOICE')
   expect(await printed()).toMatch(/Mobile Money \(MTN\) #SLP-/)
   await dialog().getByRole('button', { name: 'New sale' }).click()
 })
@@ -212,6 +224,14 @@ test('reports add up the day', async () => {
 
   await page.getByRole('button', { name: 'Tax (GRA)' }).click()
   await expect(page.getByRole('row', { name: /VAT/ })).toContainText('GH₵ 9.38')
+})
+
+test('E-VAT lists what was reported', async () => {
+  await page.goto('/settings')
+  await page.getByRole('button', { name: 'E-VAT', exact: true }).click()
+  await expect(page.getByRole('row', { name: /INV-MAIN-000002/ })).toContainText('Accepted')
+  await expect(page.getByRole('row', { name: /INV-MAIN-000001/ })).toContainText('Accepted')
+  await expect(page.getByRole('cell', { name: 'Refund', exact: true })).toHaveCount(2)
 })
 
 test('too many wrong PINs on the lock screen lock that person out', async () => {
