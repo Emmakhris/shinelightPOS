@@ -1,6 +1,8 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from apps.common.exceptions import ApprovalRequired
 
-from .models import APPROVER_ROLES, AuditLog, User
+from .models import AuditLog, User
 
 
 def audit(action, user=None, entity="", entity_id="", approved_by=None, **details):
@@ -18,11 +20,13 @@ def find_approver(pin):
     """Return the active owner/manager whose PIN matches, or None."""
     if not pin:
         return None
-    candidates = User.objects.filter(is_active=True).exclude(pin_hash="")
-    for user in candidates:
-        if (user.role in APPROVER_ROLES or user.is_superuser) and user.check_pin(pin):
-            return user
-    return None
+    candidates = [u for u in User.objects.filter(is_active=True).exclude(pin_hash="") if u.is_approver]
+    if not candidates:
+        return None
+    # Each check is slow on purpose. Doing them together keeps the wait the same however many managers there are.
+    with ThreadPoolExecutor(max_workers=len(candidates)) as pool:
+        matches = pool.map(lambda user: user.check_pin(pin), candidates)
+        return next((user for user, matched in zip(candidates, matches) if matched), None)
 
 
 def require_permission_or_approval(user, perm, approval_pin=None, message=None):
